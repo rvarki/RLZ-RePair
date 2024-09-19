@@ -100,5 +100,14 @@ if (NOT RLZ)
     endif()
     set(RLZ ${CMAKE_CURRENT_BINARY_DIR}/bin/rlz CACHE FILEPATH "Path to rlz executable" FORCE)
 else()
+    add_subdirectory(${rlz_SOURCE_DIR} ${rlz_BINARY_DIR})
     message(STATUS "rlz found at ${RLZ}.")
 endif()
+
+
+# Setting up python pipeline script
+configure_file(${CMAKE_CURRENT_LIST_DIR}/pipeline/rlz-repair.in
+                ${CMAKE_CURRENT_BINARY_DIR}/rlz-repair
+                @ONLY)
+
+file(CHMOD ${CMAKE_CURRENT_BINARY_DIR}/rlz-repair PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
