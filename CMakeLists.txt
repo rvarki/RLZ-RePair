@@ -33,13 +33,13 @@ endif()
 # Version number of project
 execute_process(
         COMMAND git rev-parse --abbrev-ref HEAD
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}"
         OUTPUT_VARIABLE GIT_BRANCH
         OUTPUT_STRIP_TRAILING_WHITESPACE)
 
 execute_process(
         COMMAND git log -1 --format=%h
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}"
         OUTPUT_VARIABLE GIT_COMMIT_HASH
         OUTPUT_STRIP_TRAILING_WHITESPACE)
 
@@ -58,13 +58,13 @@ endif()
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${BUILD_TYPE_FLAGS}")
 #################################################################################
 # Check dependencies
-message(STATUS "The source directory of the project is ${CMAKE_SOURCE_DIR}")
+message(STATUS "The source directory of the project is ${CMAKE_CURRENT_LIST_DIR}")
 
 # include_directories has been legacy since 2012 
 # https://stackoverflow.com/questions/13703647/how-to-properly-add-include-directories-with-cmake
-set(PROJECT_SRC_DIR ${CMAKE_SOURCE_DIR}/src)
-set(PROJECT_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
-set(THIRDPARTY_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/thirdparty)
+set(PROJECT_SRC_DIR ${CMAKE_CURRENT_LIST_DIR}/src)
+set(PROJECT_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR}/include)
+set(THIRDPARTY_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR}/thirdparty)
 
 message(STATUS "The include directories of the project is ${INCLUDE_DIRECTORIES}")
 
@@ -72,16 +72,33 @@ message(STATUS "The include directories of the project is ${INCLUDE_DIRECTORIES}
 make_directory(${CMAKE_CURRENT_BINARY_DIR}/logs)
 set(INSTALL_FILE  ${CMAKE_CURRENT_BINARY_DIR}/install.cmake)
 
+# Set install directories
+make_directory(${CMAKE_CURRENT_BINARY_DIR}/bin)
+make_directory(${CMAKE_CURRENT_BINARY_DIR}/lib)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib")
 
+# Set search paths for CMake
+list(APPEND CMAKE_LIBRARY_PATH "${CMAKE_CURRENT_BINARY_DIR}/lib")
+list(APPEND CMAKE_INCLUDE_PATH "${CMAKE_CURRENT_BINARY_DIR}/include")
+list(APPEND CMAKE_PREFIX_PATH  "${CMAKE_CURRENT_BINARY_DIR}")
+
+# RLZ
 find_program(RLZ rlz)
 if (NOT RLZ)
-    message(STATUS "RLZ not found. Building as external content.")
+    message(STATUS "rlz not found. Building as external content.")
     FetchContent_Declare(
             rlz
             GIT_REPOSITORY "https://github.com/rvarki/RLZ.git"
-            GIT_TAG update_build
+            GIT_TAG main
     )
+    FetchContent_GetProperties(rlz)
     if (NOT rlz_POPULATED)
-        FetchContent_MakeAvailable(rlz)
+        FetchContent_Populate(rlz)
+        add_subdirectory(${rlz_SOURCE_DIR} ${rlz_BINARY_DIR})
     endif()
+    set(RLZ ${CMAKE_CURRENT_BINARY_DIR}/bin/rlz CACHE FILEPATH "Path to rlz executable" FORCE)
+else()
+    message(STATUS "rlz found at ${RLZ}.")
 endif()
