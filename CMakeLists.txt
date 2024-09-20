@@ -104,6 +104,16 @@ else()
     message(STATUS "rlz found at ${RLZ}.")
 endif()
 
+# RePair
+add_executable(repair 
+               ${PROJECT_SRC_DIR}/repair.cpp 
+               ${PROJECT_SRC_DIR}/repair/heap.c
+               ${PROJECT_SRC_DIR}/repair/array.c
+               ${PROJECT_SRC_DIR}/repair/basics.c
+               ${PROJECT_SRC_DIR}/repair/records.c
+               ${PROJECT_SRC_DIR}/repair/hash.c)
+
+target_include_directories(repair PUBLIC ${PROJECT_INCLUDE_DIR}/repair)
 
 # Setting up python pipeline script
 configure_file(${CMAKE_CURRENT_LIST_DIR}/pipeline/rlz-repair.in
