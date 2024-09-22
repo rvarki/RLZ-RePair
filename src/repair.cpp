@@ -44,13 +44,19 @@ uint64_t calculate_parse_bytes(std::ifstream& pfile)
 }
 
 // Logic from BigRePair repair. Print the records in the heap.
-void print_records()
+void print_all_records()
 {
     spdlog::debug("Current records in the heap");
     for (int i = 0; i < Rec.size; i++)
     {
         spdlog::debug("({},{}) {} occs", (char) Rec.records[i].pair.left, (char) Rec.records[i].pair.right, Rec.records[i].freq);
     }
+}
+
+void print_record(std::string message, Trecord* orec)
+{
+    spdlog::debug("{}",message);
+    spdlog::debug("({},{}) {} occs", (char) orec->pair.left, (char) orec->pair.right, orec->freq);
 }
 
 // Runs repair on the RLZ parse
@@ -99,8 +105,14 @@ void repair(const std::string ref_str, std::ifstream& pfile)
                 }
             }
         }
-        print_records();
     }
+    // Print the heap in debug mode
+    print_all_records();
+
+    // Check the max freq pair from heap
+    id = extractMax(&Heap);
+    Trecord* orec = &Rec.records[id];
+    print_record("Maximum freq pair", orec);
 }
 
 int main(int argc, char *argv[])
