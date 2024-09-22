@@ -19,7 +19,7 @@ version = "@VERSION@"
 dirname = os.path.dirname(os.path.abspath(__file__))
 
 rlz_exe = "@RLZ@"
-
+repair_exe = "@REPAIR@"
 
 def execute_command(command):
     result = subprocess.run(command, shell=True, capture_output=False, text=True)
@@ -33,7 +33,14 @@ def runRLZ(args):
         command += "--verbose "
     
     execute_command(command)
+
+def runRePair(args):
+    command = ""
+    command += repair_exe + " " + "-r " + args.ref + " " + "-p " + args.seq + ".rlz" + " "
+    if (args.verbose):
+        command += "--verbose "
     
+    execute_command(command)
 
 def main():
     parser = argparse.ArgumentParser(description=Description, formatter_class=argparse.RawTextHelpFormatter)
@@ -45,9 +52,12 @@ def main():
     parser.add_argument('-v', '--verbose', help= "Verbose output", action='store_true')
     parser.add_argument('--log-file', help="Log filename prefix.", type = str)
     args = parser.parse_args()
+    print("############ STARTING RUNNING RLZ ############")
     runRLZ(args)
-
-
+    print("############ FINISHED RUNNING RLZ ############")
+    print("############ STARING RUNNING REPAIR ############")
+    runRePair(args)
+    print("############ FINISHED RUNNING REPAIR ############")
 
 if __name__ == '__main__':
     main()

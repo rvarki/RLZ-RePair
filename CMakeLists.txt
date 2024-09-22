@@ -113,7 +113,8 @@ add_executable(repair
                ${PROJECT_SRC_DIR}/repair/records.c
                ${PROJECT_SRC_DIR}/repair/hash.c)
 
-target_include_directories(repair PUBLIC ${PROJECT_INCLUDE_DIR}/repair)
+target_include_directories(repair PUBLIC ${PROJECT_INCLUDE_DIR} ${PROJECT_INCLUDE_DIR}/repair ${THIRDPARTY_INCLUDE_DIR} ${THIRDPARTY_INCLUDE_DIR}/CLI)
+set(REPAIR ${CMAKE_CURRENT_BINARY_DIR}/bin/repair CACHE FILEPATH "Path to the repair executable" FORCE)
 
 # Setting up python pipeline script
 configure_file(${CMAKE_CURRENT_LIST_DIR}/pipeline/rlz-repair.in
