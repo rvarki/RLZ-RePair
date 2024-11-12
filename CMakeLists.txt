@@ -1,14 +1,14 @@
 include(FetchContent)
 
-cmake_minimum_required (VERSION 3.15)
-project (rlz-repair)
+cmake_minimum_required(VERSION 3.15)
+project(rlz-repair)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-SET(VERSION_MAJOR "1")
-SET(VERSION_MINOR "0")
-SET(VERSION_PATCH "0")
-SET(VERSION "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}")
+set(VERSION_MAJOR "1")
+set(VERSION_MINOR "0")
+set(VERSION_PATCH "0")
+set(VERSION "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}")
 
 ###############################################################################
 # Set install directory if not specified
@@ -32,16 +32,16 @@ endif()
 ################################################################################
 # Version number of project
 execute_process(
-        COMMAND git rev-parse --abbrev-ref HEAD
-        WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}"
-        OUTPUT_VARIABLE GIT_BRANCH
-        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    COMMAND git rev-parse --abbrev-ref HEAD
+    WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}"
+    OUTPUT_VARIABLE GIT_BRANCH
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
 
 execute_process(
-        COMMAND git log -1 --format=%h
-        WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}"
-        OUTPUT_VARIABLE GIT_COMMIT_HASH
-        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    COMMAND git log -1 --format=%h
+    WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}"
+    OUTPUT_VARIABLE GIT_COMMIT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
 
 message(STATUS "Git current branch of project: ${GIT_BRANCH}")
 message(STATUS "Git commit hash of project: ${GIT_COMMIT_HASH}")
@@ -60,21 +60,19 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${BUILD_TYPE_FLAGS}")
 # Check dependencies
 message(STATUS "The source directory of the project is ${CMAKE_CURRENT_LIST_DIR}")
 
-# include_directories has been legacy since 2012 
-# https://stackoverflow.com/questions/13703647/how-to-properly-add-include-directories-with-cmake
 set(PROJECT_SRC_DIR ${CMAKE_CURRENT_LIST_DIR}/src)
 set(PROJECT_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR}/include)
 set(THIRDPARTY_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR}/thirdparty)
 
-message(STATUS "The include directories of the project is ${INCLUDE_DIRECTORIES}")
+message(STATUS "The include directories of the project is ${PROJECT_INCLUDE_DIR}")
 
 # Log directory for external content builds
-make_directory(${CMAKE_CURRENT_BINARY_DIR}/logs)
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/logs)
 set(INSTALL_FILE  ${CMAKE_CURRENT_BINARY_DIR}/install.cmake)
 
 # Set install directories
-make_directory(${CMAKE_CURRENT_BINARY_DIR}/bin)
-make_directory(${CMAKE_CURRENT_BINARY_DIR}/lib)
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/bin)
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib")
@@ -89,9 +87,9 @@ find_program(RLZ rlz)
 if (NOT RLZ)
     message(STATUS "rlz not found. Building as external content.")
     FetchContent_Declare(
-            rlz
-            GIT_REPOSITORY "https://github.com/rvarki/RLZ.git"
-            GIT_TAG main
+        rlz
+        GIT_REPOSITORY "https://github.com/rvarki/RLZ.git"
+        GIT_TAG main
     )
     FetchContent_GetProperties(rlz)
     if (NOT rlz_POPULATED)
@@ -100,25 +98,28 @@ if (NOT RLZ)
     endif()
     set(RLZ ${CMAKE_CURRENT_BINARY_DIR}/bin/rlz CACHE FILEPATH "Path to rlz executable" FORCE)
 else()
-    add_subdirectory(${rlz_SOURCE_DIR} ${rlz_BINARY_DIR})
     message(STATUS "rlz found at ${RLZ}.")
 endif()
 
 # RePair
 add_executable(repair 
                ${PROJECT_SRC_DIR}/repair.cpp 
-               ${PROJECT_SRC_DIR}/repair/heap.c
                ${PROJECT_SRC_DIR}/repair/array.c
                ${PROJECT_SRC_DIR}/repair/basics.c
+               ${PROJECT_SRC_DIR}/repair/bitarr.c
+               ${PROJECT_SRC_DIR}/repair/despair_c.c
+               ${PROJECT_SRC_DIR}/repair/hash.c
+               ${PROJECT_SRC_DIR}/repair/heap.c
                ${PROJECT_SRC_DIR}/repair/records.c
-               ${PROJECT_SRC_DIR}/repair/hash.c)
-
+               ${PROJECT_SRC_DIR}/repair/repair_c.c
+            #    ${PROJECT_SRC_DIR}/repair/test.c
+)
 target_include_directories(repair PUBLIC ${PROJECT_INCLUDE_DIR} ${PROJECT_INCLUDE_DIR}/repair ${THIRDPARTY_INCLUDE_DIR} ${THIRDPARTY_INCLUDE_DIR}/CLI)
 set(REPAIR ${CMAKE_CURRENT_BINARY_DIR}/bin/repair CACHE FILEPATH "Path to the repair executable" FORCE)
 
 # Setting up python pipeline script
 configure_file(${CMAKE_CURRENT_LIST_DIR}/pipeline/rlz-repair.in
-                ${CMAKE_CURRENT_BINARY_DIR}/rlz-repair
-                @ONLY)
+               ${CMAKE_CURRENT_BINARY_DIR}/rlz-repair
+               @ONLY)
 
 file(CHMOD ${CMAKE_CURRENT_BINARY_DIR}/rlz-repair PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)

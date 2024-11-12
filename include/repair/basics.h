@@ -27,20 +27,20 @@ Chile. Blanco Encalada 2120, Santiago, Chile. gnavarro@dcc.uchile.cl
 #ifndef BASICSINCLUDED
 #define BASICSINCLUDED
 
-typedef long long relong;
+typedef long unsigned int relong;
 
-void *myMalloc (relong n); // safe malloc/realloc
-void *myRealloc (void *p, relong n);
+void *myMalloc(relong n);  // safe malloc/realloc
+void *myRealloc(void *p, relong n);
 
 #define malloc(n) myMalloc(n)
-#define realloc(p,n) myRealloc(p,n)
+#define realloc(p, n) myRealloc(p, n)
 
-typedef struct
-  { int left,right;
-  } Tpair;
+typedef struct {
+    int left, right;
+} Tpair;
 
 extern relong NullFreq;
 
-int blog (int x); // bits to represent x
+int blog(int x);  // bits to represent x
 
 #endif

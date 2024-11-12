@@ -24,7 +24,7 @@ Chile. Blanco Encalada 2120, Santiago, Chile. gnavarro@dcc.uchile.cl
 
 */
 
-	// linear probing hash table for pairs
+// linear probing hash table for pairs
 
 #ifndef HASHINCLUDED
 #define HASHINCLUDED
@@ -32,26 +32,26 @@ Chile. Blanco Encalada 2120, Santiago, Chile. gnavarro@dcc.uchile.cl
 #include "basics.h"
 #include "records.h"
 
-typedef struct
-  { int *table;
-    int maxpos; // of the form (1<<smth)-1
+typedef struct {
+    int *table;
+    int maxpos;  // of the form (1<<smth)-1
     int used;
-    Trarray *Rec; // records
-  } Thash;
+    Trarray *Rec;  // records
+} Thash;
 
-Thash createHash (int maxpos, Trarray *Rec); 
-					// creates new empty hash table
+Thash createHash(int maxpos, Trarray *Rec);
+// creates new empty hash table
 
-void destroyHash (Thash *H); // destroys hash table, not heap nor list
+void destroyHash(Thash *H);  // destroys hash table, not heap nor list
 
-void insertHash (Thash *H, int id); // inserts H->Rec[id].pair in hash 
-				   // assumes it is not already there
-				   // sets ptr from Rec to hash as well
+void insertHash(Thash *H, int id, float factor);  // inserts H->Rec[id].pair in hash
+                                    // assumes it is not already there
+                                    // sets ptr from Rec to hash as well
 
-void deleteHash (Thash *H, int id); // deletes H->Rec[id].pair from hash
+void deleteHash(Thash *H, int id);  // deletes H->Rec[id].pair from hash
 
-int searchHash (Thash H, Tpair p); // returns id, -1 if not existing
+int searchHash(Thash H, Tpair p);  // returns id, -1 if not existing
 
-void hashRepos (Thash *H, int id); // repositions pair
+void hashRepos(Thash *H, int id);  // repositions pair
 
 #endif

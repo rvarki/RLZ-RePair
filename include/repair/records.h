@@ -24,56 +24,56 @@ Chile. Blanco Encalada 2120, Santiago, Chile. gnavarro@dcc.uchile.cl
 
 */
 
-	// extendible array for records
+// extendible array for records
 
 #ifndef RECORDSINCLUDED
 #define RECORDSINCLUDED
 
 #include "basics.h"
 
-typedef struct
-   { relong prev,next;
-   } Tlist; // list of prev next equal char
+typedef struct {
+    relong prev, next;
+} Tlist;  // list of prev next equal char
 
-typedef struct
-   { Tpair pair; // pair content
-     relong freq; // frequency
-     relong cpos; // 1st position in C
-     int hpos; // position in heap
-     int kpos; // position in hash
-   } Trecord;
+typedef struct {
+    Tpair pair;   // pair content
+    relong freq;  // frequency
+    relong cpos;  // 1st position in C
+    int hpos;     // position in heap
+    int kpos;     // position in hash
+} Trecord;
 
-typedef struct
-   { Trecord *records; 
-     int maxsize;  
-     int size;
-     float factor;
-     int minsize;
-     void *Hash;  // Thash *
-     void *Heap; // Theap *
-     void *List; // Tlist *
-   } Trarray;
+typedef struct {
+    Trecord *records;
+    int maxsize;
+    int size;
+    float factor;
+    int minsize;
+    void *Hash;  // Thash *
+    void *Heap;  // Theap *
+    void *List;  // Tlist *
+} Trarray;
 
-#include "heap.h"
 #include "hash.h"
+#include "heap.h"
 
 // contents can be accessed as Rec.records[0..Rec.size-1]
 
-int insertRecord (Trarray *Rec, Tpair pair); 
-			// inserts pair in Rec, returns id, links to/from
-			// Hash and Heap, not List. sets freq = 1
+int insertRecord(Trarray *Rec, Tpair pair, float factor);
+// inserts pair in Rec, returns id, links to/from
+// Hash and Heap, not List. sets freq = 1
 
-void deleteRecord (Trarray *Rec); // deletes last cell in Rec
+void deleteRecord(Trarray *Rec);  // deletes last cell in Rec
 
-Trarray createRecords (float factor, int minsize); // creates empty array
+Trarray createRecords(float factor, int minsize);  // creates empty array
 
-void assocRecords (Trarray *Rec, void *Hash, void *Heap, void *List); 
-						// associates structures
+void assocRecords(Trarray *Rec, void *Hash, void *Heap, void *List);
+// associates structures
 
-void destroyRecords (Trarray *Rec); // destroys Rec
-  
-void removeRecord (Trarray *Rec, int id);// delete record, freq <= 1
-                                       // due to freq 0 or purgue (freq 1)
-                                       // already deleted from heap
+void destroyRecords(Trarray *Rec);  // destroys Rec
+
+void removeRecord(Trarray *Rec, int id);  // delete record, freq <= 1
+                                          // due to freq 0 or purgue (freq 1)
+                                          // already deleted from heap
 
 #endif

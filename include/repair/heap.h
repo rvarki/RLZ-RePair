@@ -24,61 +24,62 @@ Chile. Blanco Encalada 2120, Santiago, Chile. gnavarro@dcc.uchile.cl
 
 */
 
-	// binary heap with sqrt(u) heaps for least occurring ones
-	// and list of frequencies, each with a list of elems, for the others
-	// which are no more than sqrt(u) overall. this guarantees O(1) 
-	// operation times for the heap, as frequencies change by +-1, and
-	// O(sqrt(u)) integers overhead over the bare arrays of ids (/factor).
+// binary heap with sqrt(u) heaps for least occurring ones
+// and list of frequencies, each with a list of elems, for the others
+// which are no more than sqrt(u) overall. this guarantees O(1)
+// operation times for the heap, as frequencies change by +-1, and
+// O(sqrt(u)) integers overhead over the bare arrays of ids (/factor).
 
 #ifndef HEAPINCLUDED
 #define HEAPINCLUDED
 
 #include <stdlib.h>
-#include "basics.h"
+
 #include "array.h"
+#include "basics.h"
 #include "records.h"
 
-typedef struct 
-  { relong freq;
-    int elems; // a pointer within freq array
-    int larger,smaller; // pointers within ff array
-  } Thfreq;
+typedef struct {
+    relong freq;
+    int elems;            // a pointer within freq array
+    int larger, smaller;  // pointers within ff array
+} Thfreq;
 
-typedef struct 
-  { int id;
-    int prev,next; // actually pointers within freq array
-    int fnode; // ptr to its freq node (ptr to ff)
-  } Thnode;
+typedef struct {
+    int id;
+    int prev, next;  // actually pointers within freq array
+    int fnode;       // ptr to its freq node (ptr to ff)
+} Thnode;
 
-typedef struct
-  { Thnode *freq; // space for all frequent nodes is preallocated, sqrt(u)
-    int freef; // ptr to free list in freq
-    Thfreq *ff; // space for all frequencies of frequent nodes prealloc idem
-    int freeff; // ptr to free list in ff
-    int smallest,largest; // list of frequent ones (ptrs in ff)
-    Tarray *infreq; // vectors for infrequent ones
+typedef struct {
+    Thnode *freq;  // space for all frequent nodes is preallocated, sqrt(u)
+    int freef;     // ptr to free list in freq
+    Thfreq *ff;    // space for all frequencies of frequent nodes prealloc idem
+    int freeff;    // ptr to free list in ff
+    int smallest, largest;  // list of frequent ones (ptrs in ff)
+    Tarray *infreq;         // vectors for infrequent ones
     int sqrtu;
-    int max;  // max freq heap used
-    Trarray *Rec; // records
-  } Theap;
+    int max;       // max freq heap used
+    Trarray *Rec;  // records
+} Theap;
 
-Theap createHeap (relong u, Trarray *Rec, float factor, int minsize); 
-				// creates new empty heap
-				// 0<factor<1: occupancy factor
-				// sqrt(u)*max(minsize,n/factor) integers
+Theap createHeap(relong u, Trarray *Rec, float factor, int minsize);
+// creates new empty heap
+// 0<factor<1: occupancy factor
+// sqrt(u)*max(minsize,n/factor) integers
 
-void destroyHeap (Theap *H); // destroys H
+void destroyHeap(Theap *H);  // destroys H
 
-void incFreq (Theap *H, int id); // inc freq of pair Rec[id]
+void incFreq(Theap *H, int id);  // inc freq of pair Rec[id]
 
-void decFreq (Theap *H, int id); // dec freq of pair Rec[id]
+void decFreq(Theap *H, int id);  // dec freq of pair Rec[id]
 
-void insertHeap (Theap *H, int id);  // with freq 1
+void insertHeap(Theap *H, int id);  // with freq 1
 
-int extractMax (Theap *H);
+int extractMax(Theap *H);
 
-void purgeHeap (Theap *H); // remove elems with freq 1
+void purgeHeap(Theap *H);  // remove elems with freq 1
 
-void heapRepos (Theap *H, int id); // repositions pair
+void heapRepos(Theap *H, int id);  // repositions pair
 
 #endif

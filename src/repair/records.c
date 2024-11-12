@@ -24,97 +24,103 @@ Chile. Blanco Encalada 2120, Santiago, Chile. gnavarro@dcc.uchile.cl
 
 */
 
-	// extendible array for pairs
+// extendible array for pairs
 
-#include <stdlib.h>
 #include "records.h"
 
-int insertRecord (Trarray *Rec, Tpair pair)
+#include <stdlib.h>
 
-   { int id;
-     Trecord *rec;
-     if (Rec->size == Rec->maxsize)
-	{ if (Rec->maxsize == 0)
-	     { Rec->maxsize = Rec->minsize;
-	       Rec->records = malloc (Rec->maxsize * sizeof(Trecord));
-	     }
-	  else
-	     { Rec->maxsize /= Rec->factor;
-	       Rec->records = realloc (Rec->records, Rec->maxsize * sizeof(Trecord));
-	     }
-	}
-     id = Rec->size++;
-     rec = &Rec->records[id];
-     rec->pair = pair;
-     rec->cpos = -1;
-     insertHash (Rec->Hash,id);
-     insertHeap (Rec->Heap,id);
-     return id;
-   }
+int insertRecord(Trarray *Rec, Tpair pair, float factor)
 
-void deleteRecord (Trarray *Rec)
-
-   { Rec->size--;
-     if (Rec->size == 0)
-        { Rec->maxsize = 0;
-          free (Rec->records);
-          Rec->records = NULL;
+{
+    int id;
+    Trecord *rec;
+    if (Rec->size == Rec->maxsize) {
+        if (Rec->maxsize == 0) {
+            Rec->maxsize = Rec->minsize;
+            Rec->records = malloc(Rec->maxsize * sizeof(Trecord));
+        } else {
+            Rec->maxsize /= Rec->factor;
+            Rec->records =
+                realloc(Rec->records, Rec->maxsize * sizeof(Trecord));
         }
-     else if ((Rec->size < Rec->maxsize * Rec->factor * Rec->factor) && 
-	      (Rec->size * Rec->factor >= Rec->minsize))
-	{ Rec->maxsize *= Rec->factor;
-	  Rec->records = realloc (Rec->records, Rec->maxsize * sizeof(Trecord));
-	}
-   }
+    }
+    id = Rec->size++;
+    rec = &Rec->records[id];
+    rec->pair = pair;
+    rec->cpos = -1;
+    insertHash(Rec->Hash, id, factor);
+    insertHeap(Rec->Heap, id);
+    return id;
+}
 
-Trarray createRecords (float factor, int minsize)
+void deleteRecord(Trarray *Rec)
 
-   { Trarray Rec;
-     Rec.records = NULL;
-     Rec.maxsize = 0;
-     Rec.size = 0;
-     Rec.factor = factor;
-     Rec.minsize = minsize;
-     Rec.Hash = NULL;
-     Rec.Heap = NULL;
-     Rec.List = NULL;
-     return Rec;
-   }
+{
+    Rec->size--;
+    if (Rec->size == 0) {
+        Rec->maxsize = 0;
+        free(Rec->records);
+        Rec->records = NULL;
+    } else if ((Rec->size < Rec->maxsize * Rec->factor * Rec->factor) &&
+               (Rec->size * Rec->factor >= Rec->minsize)) {
+        Rec->maxsize *= Rec->factor;
+        Rec->records = realloc(Rec->records, Rec->maxsize * sizeof(Trecord));
+    }
+}
 
-void assocRecords (Trarray *Rec, void *Hash, void *Heap, void *List)
+Trarray createRecords(float factor, int minsize)
 
-   { Rec->Hash = Hash;
-     Rec->Heap = Heap;
-     Rec->List = List;
-   }
+{
+    Trarray Rec;
+    Rec.records = NULL;
+    Rec.maxsize = 0;
+    Rec.size = 0;
+    Rec.factor = factor;
+    Rec.minsize = minsize;
+    Rec.Hash = NULL;
+    Rec.Heap = NULL;
+    Rec.List = NULL;
+    return Rec;
+}
 
-void destroyRecords (Trarray *Rec)
-  
-   { if (Rec->maxsize == 0) return;
-     free (Rec->records);
-     Rec->records = NULL;
-     Rec->maxsize = 0;
-     Rec->size = 0;
-     Rec->Hash = NULL;
-     Rec->Heap = NULL;
-     Rec->List = NULL;
-   }
-     
-void removeRecord (Trarray *Rec, int id) // delete record, freq <= 1
-				       // due to freq 0 or purgue (freq 1)
-				       // already deleted from heap
+void assocRecords(Trarray *Rec, void *Hash, void *Heap, void *List)
 
-   { Tlist *L = Rec->List;
-     deleteHash (Rec->Hash,id); // mark del in hash
-     if ((Rec->records[id].cpos != -1) && (L != NULL) &&
-	 (L[Rec->records[id].cpos].prev == -id-1))
-	L[Rec->records[id].cpos].prev = NullFreq; // null ptr from L
-     if (id != Rec->size-1)
-        { Rec->records[id] = Rec->records[Rec->size-1];
-          hashRepos (Rec->Hash,id);
-          heapRepos (Rec->Heap,id);
-          if ((Rec->records[id].cpos != -1) && (L != NULL))
-	     L[Rec->records[id].cpos].prev = -id-1; 
-	}
-     deleteRecord (Rec);
-   }
+{
+    Rec->Hash = Hash;
+    Rec->Heap = Heap;
+    Rec->List = List;
+}
+
+void destroyRecords(Trarray *Rec)
+
+{
+    if (Rec->maxsize == 0) return;
+    free(Rec->records);
+    Rec->records = NULL;
+    Rec->maxsize = 0;
+    Rec->size = 0;
+    Rec->Hash = NULL;
+    Rec->Heap = NULL;
+    Rec->List = NULL;
+}
+
+void removeRecord(Trarray *Rec, int id)  // delete record, freq <= 1
+                                         // due to freq 0 or purgue (freq 1)
+                                         // already deleted from heap
+
+{
+    Tlist *L = Rec->List;
+    deleteHash(Rec->Hash, id);  // mark del in hash
+    if ((Rec->records[id].cpos != -1) && (L != NULL) &&
+        (L[Rec->records[id].cpos].prev == -id - 1))
+        L[Rec->records[id].cpos].prev = NullFreq;  // null ptr from L
+    if (id != Rec->size - 1) {
+        Rec->records[id] = Rec->records[Rec->size - 1];
+        hashRepos(Rec->Hash, id);
+        heapRepos(Rec->Heap, id);
+        if ((Rec->records[id].cpos != -1) && (L != NULL))
+            L[Rec->records[id].cpos].prev = -id - 1;
+    }
+    deleteRecord(Rec);
+}
