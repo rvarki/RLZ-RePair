@@ -109,6 +109,7 @@ int populate_int_array(FILE *filePtr, int *fileContInt, relong len) {
     for (int i = 0; i < len; i++) {
         fileContInt[i] = (int)fileCont[i];
     }
+    free(fileCont);
     return 0;
 }
 

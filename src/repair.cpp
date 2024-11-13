@@ -82,9 +82,10 @@ int main(int argc, char *argv[]) {
     float factor = 0.75;
     bool verbose = false;
     std::string version = "Version: 1.0.0";
+    bool decompress = false;
     int mb = 0;
 
-    int total_mem = getTotalSystemMemory();
+    auto total_mem = getTotalSystemMemory();
     mb = std::max(1, int(0.95 * total_mem / 1024 / 1024));
 
     app.add_option("-r,--ref", ref_file,
@@ -95,6 +96,8 @@ int main(int argc, char *argv[]) {
                    "The RLZ parse of the sequence file (.rlz)")
         ->configurable()
         ->required();
+    app.add_flag("-d,--decompress", decompress,
+                 "Decompress the RLZ parse instead of compressing it");
     app.add_option("-f,--factor", factor,
                    "The factor used for the repair algorithm (default: 0.75)")
         ->configurable();
@@ -107,7 +110,7 @@ int main(int argc, char *argv[]) {
     app.set_version_flag("-v,--version", version);
     app.footer(
         "Example usage:\n"
-        "  Compress: ./repair --ref reference.fasta --parse sequence.rlz\n");
+        "  Compress: ./repair --ref reference.fasta --parse sequence.rlz --seq sequence.fasta\n");
     app.description("Run RePair on RLZ parse");
     CLI11_PARSE(app, argc, argv);
     if (verbose) {
@@ -120,13 +123,24 @@ int main(int argc, char *argv[]) {
     spdlog::info("The sequence file provided: {}", seq_file);
     spdlog::info("The factor provided: {}", factor);
 
+    if (decompress) {
+        spdlog::debug("Decompressing the RLZ parse");
+        auto sw_decompress = spdlog::stopwatch();
+        int x = despair(seq_file.c_str());
+        if (x != 0) {
+            spdlog::error("Error in decompression function");
+            return 1;
+        }
+        return 0;
+    }
+
     spdlog::stopwatch sw_repair;
 
     spdlog::debug("Starting repair function");
 
 
     int x = repair_main(seq_file.c_str(), rlz_parse.c_str(),
-    ref_file.c_str(), factor, 4096);
+    ref_file.c_str(), factor, mb);
 
     if (x != 0) {
         spdlog::error("Error in repair function");
@@ -135,7 +149,6 @@ int main(int argc, char *argv[]) {
 
     auto sw_elapsed = sw_repair.elapsed();
     spdlog::debug("RePair completed in {:.6} seconds", sw_elapsed.count());
-
 
     return 0;
 }
