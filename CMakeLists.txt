@@ -91,7 +91,7 @@ if (NOT RLZ)
     FetchContent_Declare(
             rlz
             GIT_REPOSITORY "https://github.com/rvarki/RLZ.git"
-            GIT_TAG main
+            GIT_TAG forward_match
     )
     FetchContent_GetProperties(rlz)
     if (NOT rlz_POPULATED)
@@ -106,7 +106,8 @@ endif()
 
 # RePair
 add_executable(repair 
-               ${PROJECT_SRC_DIR}/repair.cpp 
+               ${PROJECT_SRC_DIR}/repair.cpp
+               ${PROJECT_SRC_DIR}/phrase.cpp  
                ${PROJECT_SRC_DIR}/repair/heap.c
                ${PROJECT_SRC_DIR}/repair/array.c
                ${PROJECT_SRC_DIR}/repair/basics.c

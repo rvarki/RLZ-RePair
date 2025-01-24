@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <unordered_map>
 #include "repair.h"
+#include "phrase.h"
 
 extern "C" {
     #include "heap.h"
@@ -268,6 +269,9 @@ int main(int argc, char *argv[])
     spdlog::info("Starting to RePair the RLZ parse");
     spdlog::info("The reference file provided: {}", ref_file);
     spdlog::info("The RLZ parse file provided: {}", rlz_parse);
+
+    // Test
+    Phrase p1;
 
     // Opening Ref file 
     std::ifstream rfile(ref_file, std::ios::binary | std::ios::in);
