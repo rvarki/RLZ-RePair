@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstdint>
+#include <unordered_map>
 #include "repair.h"
 
 extern "C" {
@@ -26,8 +27,12 @@ Trarray Rec; // records
 Tpair pair; // pair for freq
 int chars[256]; // Indicates what chars are present in both the ref and seq parse.
 char map[256]; // How to map back to the original chars.
-int alpha; // Number of characters used prior to RePair
-int n; // Technically |R| n - alpha gives number of rules
+int alpha; // Number of characters used prior to RePair (alpha should actually start at 0, but currently set at 1 to avoid error in building max heap)
+int n; // Technically |R| n - alpha - 1 gives number of rules
+
+// Hash table containing the reference ranges of pairs (bi-grams). 
+// The vector contains the left endpoint of the range corresponding to the pair in the bi-gram since the range is left endpoint to left endpoint + 1
+std::unordered_map<std::string, std::vector<int>> hash_ranges; 
 
 /**
  * @brief Calculates the number of bytes encoded in the RLZ parse.
@@ -49,6 +54,11 @@ uint64_t calculate_parse_bytes(std::ifstream& pfile)
         }
         count++;
     }
+
+    // Reset the file pointer to the beginning of the file
+    pfile.clear();
+    pfile.seekg(0, std::ios::beg);
+
     return seq_orig_size;
 }
 
@@ -62,7 +72,7 @@ void print_all_records()
     spdlog::debug("Current records in the heap");
     for (int i = 0; i < Rec.size; i++)
     {
-        spdlog::debug("({},{}) {} occs", (char) Rec.records[i].pair.left, (char) Rec.records[i].pair.right, Rec.records[i].freq);
+        spdlog::debug("({},{}) {} occs", (unsigned int) Rec.records[i].pair.left, (unsigned int) Rec.records[i].pair.right, Rec.records[i].freq);
     }
 }
 
@@ -76,7 +86,7 @@ void print_all_records()
 void print_record(const std::string message, const Trecord* orec)
 {
     spdlog::debug("{}",message);
-    spdlog::debug("({},{}) {} occs", (char) orec->pair.left, (char) orec->pair.right, orec->freq);
+    spdlog::debug("({},{}) {} occs", (unsigned int) orec->pair.left, (unsigned int) orec->pair.right, orec->freq);
 }
 
 /**
@@ -96,6 +106,22 @@ void print_ref(const std::vector<unsigned char>& rvec)
     spdlog::debug("Reference string (in numeric form): {}", oss.str());
 }
 
+/**
+ * @brief Prints the hash table of ranges contents
+ * @return void
+ */
+void print_hash_ranges()
+{
+    std::string values = "";
+    for (const auto& [key, value] : hash_ranges){
+        for (int i = 0; i < value.size(); i++){
+            values += std::to_string(value[i]);
+            values += " ";
+        }
+        spdlog::debug("Key: {}, Values: {}", key, values);
+        values = "";
+    }
+}
 
 /**
  * @brief Remaps the chars in the Ref vector and updates the chars and map arrays (logic from BigRePair).
@@ -105,6 +131,8 @@ void print_ref(const std::vector<unsigned char>& rvec)
  * between 0-|Ref| and write those values in the apporpriate cell in the chars array. We write the inverse 
  * of this operation in the map array. Doing this will allow us to know how many rules are created at the
  * end of RePair as well.
+ * 
+ * Additionally create hash table of the reference ranges bi-grams.
  * 
  * @param[in] rbuffer [std::vector<unsigned char>] The unsigned int representation of the reference.
  * @param[in] chars [int*] pointer to the head of the chars array.
@@ -116,25 +144,55 @@ void print_ref(const std::vector<unsigned char>& rvec)
 
 void prepareRef(std::vector<unsigned char>& rvec, int* chars, char* map, int size)
 {
-    alpha = 0;
+    alpha = 1;
+    // Remaps the chars in the ref vector and upate chars array
     for (int i = 0; i < rvec.size(); i++){
         unsigned int x = rvec[i];
         if (chars[x] == -1){
             chars[x] = alpha++;
         }
-        rvec[i]= chars[x];          
+        rvec[i] = chars[x];          
     }
 
+    // Updates the map array to undo remapping.
     for (int i = 0; i < size; i++){
         if (chars[i] != -1){
-            map[chars[i]] =i;
+            map[chars[i]] = i;
         }
     }
     print_ref(rvec);
+
+    // Populate of hash table of ranges of reference bi-grams 
+    for (int i = 1; i < rvec.size(); i++)
+    {
+        std::string pair_key = std::to_string(rvec[i-1]) + "-" + std::to_string(rvec[i]);
+        int lrange = i - 1;
+        auto it = hash_ranges.find(pair_key);
+        if (it == hash_ranges.end())
+            hash_ranges[pair_key].emplace_back(lrange);
+        else{
+            auto itv = std::find((it->second).begin(), (it->second).end(), lrange);
+            if (itv == (it->second).end()){
+                hash_ranges[pair_key].emplace_back(lrange);
+            }
+        }
+    }
+    print_hash_ranges();
 }
 
-// Runs repair on the RLZ parse
-void repair(const std::string ref_str, std::ifstream& pfile)
+/**
+ * @brief Creates max heap of the bi-gram within the sequence file via the RLZ parse
+ * 
+ * We directly are using Heap/Hash/Record data structures in BigRePair to create the max heap
+ * Max heap allows us to quickly find the bi-gram with the highest occurence.
+ * We will also store the range that the bi-gram spans within a separate hash table.
+ * 
+ * @param[in] rvec [std::vector<unsigned char>&] the reference text 
+ * @param[in] pfile [std::infstream&] the RLZ parse file stream
+ * 
+ * @return void?
+ */
+void createMaxHeap(const std::vector<unsigned char>& rvec, std::ifstream& pfile)
 {
     // Create pair-freq heap (Thanks BigRePair)
     Rec = createRecords(factor, minsize);
@@ -162,10 +220,10 @@ void repair(const std::string ref_str, std::ifstream& pfile)
             for (uint64_t j = 0; j < len; j++)
             {
                 if (pair.left == '\0'){
-                    pair.left = ref_str[pos];
+                    pair.left = rvec[pos];
                 }
                 else{
-                    pair.right = ref_str[pos + j];
+                    pair.right = rvec[pos + j];
                     id = searchHash(Hash, pair);
                     if (id == -1) // new pair, insert
                     {
@@ -246,12 +304,8 @@ int main(int argc, char *argv[])
     psize = calculate_parse_bytes(pfile);
     spdlog::debug("The parse encodes for {} bytes", psize);
 
-    // Reset the file pointer to the beginning of the file
-    pfile.clear();
-    pfile.seekg(0, std::ios::beg);
-
-    // Call repair function
-    // repair(ref_str, pfile);
+    // Call createMaxHeap function
+    createMaxHeap(rvec, pfile);
     
     rfile.close();
     pfile.close();
