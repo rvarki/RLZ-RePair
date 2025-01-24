@@ -24,8 +24,17 @@ Thash Hash; // hash table of pairs
 Theap Heap; // special heap of pairs
 Trarray Rec; // records
 Tpair pair; // pair for freq
+int chars[256]; // Indicates what chars are present in both the ref and seq parse.
+char map[256]; // How to map back to the original chars.
+int alpha; // Number of characters used prior to RePair
+int n; // Technically |R| n - alpha gives number of rules
 
-// Calculates the number of bytes the RLZ parse file encodes for
+/**
+ * @brief Calculates the number of bytes encoded in the RLZ parse.
+ * 
+ * @param[in] pfile [ifstream] the input file stream of the RLZ parse file.
+ * @return the number of bytes encoded by the RLZ parse file.
+ */
 uint64_t calculate_parse_bytes(std::ifstream& pfile)
 {
     int count = 1;
@@ -43,7 +52,11 @@ uint64_t calculate_parse_bytes(std::ifstream& pfile)
     return seq_orig_size;
 }
 
-// Logic from BigRePair repair. Print the records in the heap.
+/**
+ * @brief Prints all records in the max heap (thanks BigRePair). Debug purposes only.
+ * @return void
+ */
+
 void print_all_records()
 {
     spdlog::debug("Current records in the heap");
@@ -53,10 +66,71 @@ void print_all_records()
     }
 }
 
-void print_record(std::string message, Trecord* orec)
+/**
+ * @brief Prints specific record in the max heap with a message. Debug purposes only.
+ * @param[in] message [string] the message to be printed with the record.
+ * @param[in] orec [Trecord*] the record content to be printed.
+ * @return void
+ */
+
+void print_record(const std::string message, const Trecord* orec)
 {
     spdlog::debug("{}",message);
     spdlog::debug("({},{}) {} occs", (char) orec->pair.left, (char) orec->pair.right, orec->freq);
+}
+
+/**
+ * @brief Prints the reference during RePair. Debug purposes only.
+ * @param[in] rvec [std::vector<unsigned char>&] reference vector
+ * @return void
+ */
+void print_ref(const std::vector<unsigned char>& rvec)
+{
+    std::ostringstream oss;
+    
+    // Use range-based for loop for clarity
+    for (unsigned char c : rvec) {
+        oss << static_cast<int>(c) << " ";  // Use cast to int for numeric representation
+    }
+
+    spdlog::debug("Reference string (in numeric form): {}", oss.str());
+}
+
+
+/**
+ * @brief Remaps the chars in the Ref vector and updates the chars and map arrays (logic from BigRePair).
+ * 
+ * Reasoning(?): UTF-8 chars are stored in 1 byte (8 bits, 0-255). However the Ref likely does not 
+ * contain all chars which means wasted values between 0-255. We remap the chars in Ref to be 
+ * between 0-|Ref| and write those values in the apporpriate cell in the chars array. We write the inverse 
+ * of this operation in the map array. Doing this will allow us to know how many rules are created at the
+ * end of RePair as well.
+ * 
+ * @param[in] rbuffer [std::vector<unsigned char>] The unsigned int representation of the reference.
+ * @param[in] chars [int*] pointer to the head of the chars array.
+ * @param[in] map [char*] pointer to the head of map array.
+ * @param[in] size [int] size of the chars and map arrays.
+ * 
+ * @return void
+ */
+
+void prepareRef(std::vector<unsigned char>& rvec, int* chars, char* map, int size)
+{
+    alpha = 0;
+    for (int i = 0; i < rvec.size(); i++){
+        unsigned int x = rvec[i];
+        if (chars[x] == -1){
+            chars[x] = alpha++;
+        }
+        rvec[i]= chars[x];          
+    }
+
+    for (int i = 0; i < size; i++){
+        if (chars[i] != -1){
+            map[chars[i]] =i;
+        }
+    }
+    print_ref(rvec);
 }
 
 // Runs repair on the RLZ parse
@@ -144,10 +218,14 @@ int main(int argc, char *argv[])
         std::exit(EXIT_FAILURE);
     }
 
-    // Store the Ref file content in string variable
-    std::ostringstream ref_stream;
-    ref_stream << rfile.rdbuf();
-    std::string ref_str = ref_stream.str();
+    // Get Ref file size
+    rfile.seekg(0, std::ios::end);
+    size_t rsize = rfile.tellg();
+    rfile.seekg(0, std::ios::beg);
+
+    // Read the Ref file into a vector of unsigned char
+    std::vector<unsigned char> rvec(rsize);
+    rfile.read(reinterpret_cast<char*>(rvec.data()), rsize);
 
     // Opening RLZ parse
     std::ifstream pfile(rlz_parse, std::ios::binary | std::ios::in);
@@ -155,6 +233,14 @@ int main(int argc, char *argv[])
         spdlog::error("Error opening {}", rlz_parse);
         std::exit(EXIT_FAILURE);
     }
+
+    // Initialize the chars array to be -1 to indicate that no characters have been mapped yet.
+    for (int i = 0; i < 256; i++){
+        chars[i] = -1;
+    }
+
+    // Process Ref and update the chars and map arrays.
+    prepareRef(rvec, chars, map, 256);
 
     // Calculate the size of the original sequence file using the len field of the pairs
     psize = calculate_parse_bytes(pfile);
@@ -165,7 +251,7 @@ int main(int argc, char *argv[])
     pfile.seekg(0, std::ios::beg);
 
     // Call repair function
-    repair(ref_str, pfile);
+    // repair(ref_str, pfile);
     
     rfile.close();
     pfile.close();
