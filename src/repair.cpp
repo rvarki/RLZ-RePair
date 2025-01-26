@@ -6,6 +6,7 @@
 #include <sstream>
 #include <cstdint>
 #include <unordered_map>
+#include <list>
 #include "repair.h"
 #include "phrase.h"
 
@@ -34,6 +35,9 @@ int n; // Technically |R| n - alpha - 1 gives number of rules
 // Hash table containing the reference ranges of pairs (bi-grams). 
 // The vector contains the left endpoint of the range corresponding to the pair in the bi-gram since the range is left endpoint to left endpoint + 1
 std::unordered_map<std::string, std::vector<int>> hash_ranges; 
+
+// List of explicit and non explicit phrases
+std::list<Phrase> phrase_lst;
 
 /**
  * @brief Calculates the number of bytes encoded in the RLZ parse.
@@ -121,6 +125,30 @@ void print_hash_ranges()
         }
         spdlog::debug("Key: {}, Values: {}", key, values);
         values = "";
+    }
+}
+
+/**
+ * @brief Prints phrases in list
+ * @return void
+ */
+
+void print_phrase_lst(const std::vector<unsigned char>& rvec)
+{
+    std::string content;
+    for(Phrase phrase : phrase_lst){
+        content = "";
+        if (!(phrase.exp)){
+            for(int i = phrase.lrange; i <= phrase.rrange; i++){
+                content += std::to_string(rvec[i]);
+            }
+        }
+        else{
+            for (unsigned char i : phrase.content){
+                content += std::to_string(i);
+            }
+        }
+        spdlog::debug("Phrase: {}", content);
     }
 }
 
@@ -243,9 +271,153 @@ void createMaxHeap(const std::vector<unsigned char>& rvec, std::ifstream& pfile)
     print_all_records();
 
     // Check the max freq pair from heap
-    id = extractMax(&Heap);
+    // id = extractMax(&Heap);
+    // Trecord* orec = &Rec.records[id];
+    // print_record("Maximum freq pair", orec);
+
+    // Reset the file pointer to the beginning of the file
+    pfile.clear();
+    pfile.seekg(0, std::ios::beg);
+}
+
+/**
+ * @brief populates the phrases in RLZ parse. Range for each phrase is [left,right]
+ * 
+ * @param[in] pfile [std::ifstream&] the RLZ parse filestream
+ * @return void 
+ */
+
+void populatePhrases(const std::vector<unsigned char>& rvec, std::ifstream& pfile)
+{
+    uint64_t num_pairs, pos, len;
+
+    // First uint64_t bytes tell how many (pos,len) pairs are stored in the parse file
+    pfile.read(reinterpret_cast<char*>(&num_pairs), sizeof(uint64_t));
+
+    // Update the heap with the frequencies of all pairs
+    for (uint64_t i = 0; i < 2 * num_pairs; i++)
+    {
+        if (i % 2 == 0){
+            pfile.read(reinterpret_cast<char*>(&pos), sizeof(uint64_t));
+        }
+        else
+        {
+            pfile.read(reinterpret_cast<char*>(&len), sizeof(uint64_t));
+            Phrase phrase(pos, pos + len - 1);
+            phrase_lst.push_back(phrase);
+        }
+    }
+
+    // Reset the file pointer to the beginning of the file
+    pfile.clear();
+    pfile.seekg(0, std::ios::beg);
+
+    // Debug
+    print_phrase_lst(rvec);
+}
+
+/**
+ * @brief Process the phrase list for the phrase boundary condition
+ * 
+ * @param[in] rvec
+ * @return void
+ */
+
+void phraseBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right_elem)
+{
+    auto curr_phrase = phrase_lst.begin();
+
+    // Iterate through the phrases in the phrase list
+    while (curr_phrase != phrase_lst.end()) 
+    {
+        auto next_phrase = std::next(curr_phrase);
+        // If there is a next phrase, check the phrase boundaries first.
+        if (next_phrase != phrase_lst.end())
+        {
+            // Both phrases not explicit
+            if (!(curr_phrase->exp) && !(next_phrase->exp))
+            {
+                if ((rvec[curr_phrase->rrange] == left_elem) && (rvec[next_phrase->lrange] == right_elem))
+                {
+                    std::list<unsigned char> content;
+                    content.push_back(left_elem);
+                    content.push_back(right_elem);
+                    Phrase new_phrase(content);
+                    phrase_lst.insert(next_phrase, new_phrase); // Insert before the next record
+                    if (curr_phrase->rrange - 1 < curr_phrase->lrange){ // If the non-explicit phrase is empty we delete it.
+                        curr_phrase = phrase_lst.erase(curr_phrase);
+                    }
+                    else{
+                        curr_phrase->rrange = curr_phrase->rrange - 1;
+                    }
+                    if (next_phrase->lrange + 1 > next_phrase->rrange){
+                        next_phrase = phrase_lst.erase(next_phrase);   
+                    }
+                    else{
+                        next_phrase->lrange = next_phrase->lrange + 1;
+                    }
+                    continue;
+                }
+            }
+            // Current phrase not explicit and next phrase explicit
+            else if (!(curr_phrase->exp) && (next_phrase->exp))
+            {
+                if ((rvec[curr_phrase->rrange] == left_elem) && (next_phrase->content.front() == right_elem))
+                {
+                    next_phrase->content.push_front(left_elem);
+                    if (curr_phrase->rrange - 1 < curr_phrase->lrange){ // If the non-explicit phrase is empty we delete it.
+                        curr_phrase = phrase_lst.erase(curr_phrase);
+                    }
+                    else{
+                        curr_phrase->rrange = curr_phrase->rrange - 1;
+                    }
+                    continue;
+                }
+            }
+            // Current phrase explicit and next phrase not explicit
+            else if ((curr_phrase->exp) && !(next_phrase->exp))
+            {
+                if ((curr_phrase->content.back() == left_elem) && (rvec[next_phrase->lrange] == right_elem))
+                {
+                    curr_phrase->content.push_back(right_elem);
+                    if (next_phrase->lrange + 1 > next_phrase->rrange){
+                        next_phrase = phrase_lst.erase(next_phrase);
+                    }
+                    else{
+                        next_phrase->lrange = next_phrase->lrange + 1;
+                    }
+                    continue;
+                }
+            }
+            // Both explicit phrases, move content of next phrase into first phrase and delete next phrase
+            else{
+                curr_phrase->content.splice(curr_phrase->content.end(), next_phrase->content);
+                next_phrase = phrase_lst.erase(next_phrase);
+            }
+
+            // Update the phrase if it gets to this point
+            curr_phrase = std::next(curr_phrase);
+        }
+        else{ // No more phrase boundaries left
+            break;
+        }
+    }
+
+    // Debug
+    print_phrase_lst(rvec);
+}
+
+
+/**
+ * @brief RePair
+ * @return void
+ */
+void repair(std::vector<unsigned char>& rvec)
+{
+    int id = extractMax(&Heap);
     Trecord* orec = &Rec.records[id];
     print_record("Maximum freq pair", orec);
+    phraseBoundaries(rvec, orec->pair.left, orec->pair.right);
 }
 
 int main(int argc, char *argv[])
@@ -269,9 +441,6 @@ int main(int argc, char *argv[])
     spdlog::info("Starting to RePair the RLZ parse");
     spdlog::info("The reference file provided: {}", ref_file);
     spdlog::info("The RLZ parse file provided: {}", rlz_parse);
-
-    // Test
-    Phrase p1;
 
     // Opening Ref file 
     std::ifstream rfile(ref_file, std::ios::binary | std::ios::in);
@@ -308,8 +477,14 @@ int main(int argc, char *argv[])
     psize = calculate_parse_bytes(pfile);
     spdlog::debug("The parse encodes for {} bytes", psize);
 
+    // Call populatePhrases function
+    populatePhrases(rvec, pfile);
+
     // Call createMaxHeap function
     createMaxHeap(rvec, pfile);
+
+    // RePair
+    repair(rvec);
     
     rfile.close();
     pfile.close();
