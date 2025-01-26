@@ -24,6 +24,7 @@ void createMaxHeap(const std::vector<unsigned char>& rvec, std::ifstream& pfile)
 void populatePhrases(const std::vector<unsigned char>& rvec, std::ifstream& pfile);
 void repair(std::vector<unsigned char>& rvec);
 void phraseBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right_elem);
+void sourceBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right_elem);
 
 
 #endif  // REPAIR_H

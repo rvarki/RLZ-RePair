@@ -150,6 +150,7 @@ void print_phrase_lst(const std::vector<unsigned char>& rvec)
         }
         spdlog::debug("Phrase: {}", content);
     }
+    spdlog::debug("#################################");
 }
 
 /**
@@ -331,7 +332,7 @@ void phraseBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right
     while (curr_phrase != phrase_lst.end()) 
     {
         auto next_phrase = std::next(curr_phrase);
-        // If there is a next phrase, check the phrase boundaries first.
+        // If there is a next phrase, check the phrase boundaries.
         if (next_phrase != phrase_lst.end())
         {
             // Both phrases not explicit
@@ -407,6 +408,97 @@ void phraseBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right
     print_phrase_lst(rvec);
 }
 
+/**
+ * @brief Process the phrase list for the source boundary condition
+ */
+void sourceBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right_elem)
+{
+    auto curr_phrase = phrase_lst.begin();
+    // Iterate through the phrases in the phrase list
+    while (curr_phrase != phrase_lst.end()) 
+    {
+        // Check if the curr phrase is explicit or not
+        if (!(curr_phrase->exp)){
+            // Check if the curr phrase can form the bi-gram with the reference using its leftmost element
+            if (curr_phrase->lrange != 0){
+                // If the bi-gram can be formed then make the leftmost element make an explicit phrase of its own
+                if (rvec[curr_phrase->lrange - 1] == left_elem && rvec[curr_phrase->lrange] == right_elem){
+                    // If at the beginning of phrases, then no previous phrase
+                    if (curr_phrase == phrase_lst.begin()){
+                        std::list<unsigned char> content;
+                        content.push_back(rvec[curr_phrase->lrange]);
+                        Phrase new_phrase(content);
+                        phrase_lst.insert(curr_phrase, new_phrase);
+                    }
+                    // Previous phrase exists.
+                    else{
+                        auto prev_phrase = std::prev(curr_phrase);
+                        // If the previous phrase is explicit, we can add directly to it.
+                        if (prev_phrase->exp){
+                            prev_phrase->content.push_back(rvec[curr_phrase->lrange]);
+                        }
+                        // We have to create new explicit phrase anyways
+                        else{
+                            std::list<unsigned char> content;
+                            content.push_back(rvec[curr_phrase->lrange]);
+                            Phrase new_phrase(content);
+                            phrase_lst.insert(curr_phrase, new_phrase);
+                        }                        
+                    }
+                    // If non-explicit phrase is empty we delete it
+                    if (curr_phrase->lrange + 1 > curr_phrase->rrange){ // If the non-explicit phrase is empty we delete it.
+                        curr_phrase = phrase_lst.erase(curr_phrase);
+                        continue;
+                    }
+                    else{
+                        curr_phrase->lrange = curr_phrase->lrange + 1;
+                    }
+                }
+            }
+            if (curr_phrase->rrange != rvec.size()-1){
+                // If the bi-gram can be formed then make the rightmost element make an explicit phrase of its own
+                if (rvec[curr_phrase->rrange] == left_elem && rvec[curr_phrase->rrange + 1] == right_elem){
+                    // If at the end of phrases, then no next phrase
+                    if (curr_phrase == std::prev(phrase_lst.end())){
+                        std::list<unsigned char> content;
+                        content.push_back(rvec[curr_phrase->rrange]);
+                        Phrase new_phrase(content);
+                        auto next_phrase = std::next(curr_phrase);
+                        phrase_lst.insert(next_phrase, new_phrase);
+                    }
+                    // Next phrase exists.
+                    else{
+                        auto next_phrase = std::next(curr_phrase);
+                        // If the next phrase is explicit, we can add directly to it.
+                        if (next_phrase->exp){
+                            next_phrase->content.push_front(rvec[curr_phrase->rrange]);
+                        }
+                        // We have to create new explicit phrase anyways
+                        else{
+                            spdlog::debug("Gets to here!!!!!\n");
+                            std::list<unsigned char> content;
+                            content.push_back(rvec[curr_phrase->rrange]);
+                            Phrase new_phrase(content);
+                            phrase_lst.insert(next_phrase, new_phrase);
+                        }                        
+                    }
+                    // If non-explicit phrase is empty we delete it
+                    if (curr_phrase->rrange - 1 < curr_phrase->lrange){ // If the non-explicit phrase is empty we delete it.
+                        curr_phrase = phrase_lst.erase(curr_phrase);
+                        continue;
+                    }
+                    else{
+                        curr_phrase->rrange = curr_phrase->rrange - 1;
+                    }
+                }
+            }
+        }
+        curr_phrase = std::next(curr_phrase);
+    }
+
+    // Debug
+    print_phrase_lst(rvec);
+}
 
 /**
  * @brief RePair
@@ -418,6 +510,7 @@ void repair(std::vector<unsigned char>& rvec)
     Trecord* orec = &Rec.records[id];
     print_record("Maximum freq pair", orec);
     phraseBoundaries(rvec, orec->pair.left, orec->pair.right);
+    sourceBoundaries(rvec, orec->pair.left, orec->pair.right);
 }
 
 int main(int argc, char *argv[])
