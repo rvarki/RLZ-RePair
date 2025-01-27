@@ -726,6 +726,9 @@ void repair(std::vector<unsigned char>& rvec)
                 int prev_left = 1000;
                 int decrement = 0;
 
+                // Make copy rvec which we will keep modifying in this section to maintain the correct elements to be replaced (think of how not to do this)
+                std::vector<unsigned char> copy_rvec(rvec);
+
                 // Could have multiple occurances in Ref
                 for (int left : hash_ranges[pair_key])
                 {
@@ -744,13 +747,13 @@ void repair(std::vector<unsigned char>& rvec)
                         spdlog::debug("Left middle, right middle");
 
                         // Decrease frequency of left pair effected by merge.
-                        DecreaseFreq(rvec[left-1], rvec[left]);
+                        DecreaseFreq(copy_rvec[left-1], copy_rvec[left]);
                         // Increase frequency of new pair.
-                        IncreaseFreq(rvec[left-1], n);
+                        IncreaseFreq(copy_rvec[left-1], n);
                         // Decrease frequency of right pair effected by merge.
-                        DecreaseFreq(rvec[left+1], rvec[left+2]);
+                        DecreaseFreq(copy_rvec[left+1], copy_rvec[left+2]);
                         // Increase frequency of new pair.
-                        IncreaseFreq(n, rvec[left+2]);
+                        IncreaseFreq(n, copy_rvec[left+2]);
                     }
                     // If both elments are at the beginning and end of the phrases, then have to look at the end of the prev and start of the next
                     else if (left == curr_phrase->lrange && left + 1 == curr_phrase->rrange)
@@ -764,16 +767,16 @@ void repair(std::vector<unsigned char>& rvec)
                             if (prev_phrase->exp)
                             {
                                 // Decrease frequency of left pair effected by merge.
-                                DecreaseFreq(prev_phrase->content.back(), rvec[left]);
+                                DecreaseFreq(prev_phrase->content.back(), copy_rvec[left]);
                                 // Increase frequency of new pair.
                                 IncreaseFreq(prev_phrase->content.back(), n);
                             }
                             else
                             {
                                 // Decrease frequency of left pair effected by merge.
-                                DecreaseFreq(rvec[prev_phrase->rrange], rvec[left]);
+                                DecreaseFreq(copy_rvec[prev_phrase->rrange], copy_rvec[left]);
                                 // Increase frequency of new pair.
-                                IncreaseFreq(rvec[prev_phrase->rrange], n);
+                                IncreaseFreq(copy_rvec[prev_phrase->rrange], n);
                             }
                         }
                         
@@ -783,16 +786,16 @@ void repair(std::vector<unsigned char>& rvec)
                             auto next_phrase = std::next(curr_phrase);
                             if (next_phrase->exp){
                                 // Decrease frequency of right pair effected by merge.
-                                DecreaseFreq(rvec[left+1], next_phrase->content.front());
+                                DecreaseFreq(copy_rvec[left+1], next_phrase->content.front());
                                 // Increase frequency of new pair
                                 IncreaseFreq(n, next_phrase->content.front());
                             }
                             else
                             {
                                 // Decrease frequency of right pair effected by merge.
-                                DecreaseFreq(rvec[left+1], rvec[next_phrase->lrange]);
+                                DecreaseFreq(copy_rvec[left+1], copy_rvec[next_phrase->lrange]);
                                 // Increase frequency of new pair
-                                IncreaseFreq(n, rvec[next_phrase->lrange]);
+                                IncreaseFreq(n, copy_rvec[next_phrase->lrange]);
                             }
                         }
                     }
@@ -807,31 +810,31 @@ void repair(std::vector<unsigned char>& rvec)
                             if (prev_phrase->exp)
                             {
                                 // Decrease frequency of left pair effected by merge.
-                                DecreaseFreq(prev_phrase->content.back(), rvec[left]);
+                                DecreaseFreq(prev_phrase->content.back(), copy_rvec[left]);
                                 // Increase frequency of new pair.
                                 IncreaseFreq(prev_phrase->content.back(), n);
                             }
                             else
                             {
                                 // Decrease frequency of left pair effected by merge.
-                                DecreaseFreq(rvec[prev_phrase->rrange], rvec[left]);
+                                DecreaseFreq(copy_rvec[prev_phrase->rrange], copy_rvec[left]);
                                 // Increase frequency of new pair.
-                                IncreaseFreq(rvec[prev_phrase->rrange], n);
+                                IncreaseFreq(copy_rvec[prev_phrase->rrange], n);
                             }
                         }
                         // Decrease frequency of right pair effected by merge.
-                        DecreaseFreq(rvec[left+1], rvec[left+2]);
+                        DecreaseFreq(copy_rvec[left+1], copy_rvec[left+2]);
                         // Increase frequency of new pair.
-                        IncreaseFreq(n, rvec[left+2]);
+                        IncreaseFreq(n, copy_rvec[left+2]);
                     }
                     // If the left elem is in the middle of the phrase and the right elem is at the end of the phrase
                     else if (left > curr_phrase->lrange && left + 1 == curr_phrase->rrange)
                     {
                         spdlog::debug("Left middle, right end");
                         // Decrease frequency of left pair effected by merge.
-                        DecreaseFreq(rvec[left-1], rvec[left]);
+                        DecreaseFreq(copy_rvec[left-1], copy_rvec[left]);
                         // Increase frequency of new pair.
-                        IncreaseFreq(rvec[left-1], n);
+                        IncreaseFreq(copy_rvec[left-1], n);
                         
                         // For the right pair effected have to look at next phrase
                         if (curr_phrase != std::prev(phrase_lst.end()))
@@ -840,16 +843,16 @@ void repair(std::vector<unsigned char>& rvec)
                             if (next_phrase->exp)
                             {
                                 // Decrease frequency of right pair effected by merge.
-                                DecreaseFreq(rvec[left+1], next_phrase->content.front());
+                                DecreaseFreq(copy_rvec[left+1], next_phrase->content.front());
                                 // Increase frequency of new pair
                                 IncreaseFreq(n, next_phrase->content.front());
                             }
                             else
                             {
                                 // Decrease frequency of right pair effected by merge.
-                                DecreaseFreq(rvec[left+1], rvec[next_phrase->lrange]);
+                                DecreaseFreq(copy_rvec[left+1], copy_rvec[next_phrase->lrange]);
                                 // Increase frequency of new pair
-                                IncreaseFreq(n, rvec[next_phrase->lrange]);
+                                IncreaseFreq(n, copy_rvec[next_phrase->lrange]);
                             }
                         }
                     }
@@ -881,6 +884,8 @@ void repair(std::vector<unsigned char>& rvec)
                     // Update the values
                     prev_left = left;
                     decrement++;
+                    copy_rvec[left] = n;
+                    copy_rvec.erase(copy_rvec.begin() + left + 1);
                 }
             }
         }
