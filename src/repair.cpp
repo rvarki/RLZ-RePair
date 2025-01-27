@@ -74,11 +74,13 @@ uint64_t calculate_parse_bytes(std::ifstream& pfile)
 
 void print_all_records()
 {
+    spdlog::debug("****************************************");
     spdlog::debug("Current records in the heap");
     for (int i = 0; i < Rec.size; i++)
     {
         spdlog::debug("({},{}) {} occs", (unsigned int) Rec.records[i].pair.left, (unsigned int) Rec.records[i].pair.right, Rec.records[i].freq);
     }
+    spdlog::debug("****************************************");
 }
 
 /**
@@ -90,8 +92,10 @@ void print_all_records()
 
 void print_record(const std::string message, const Trecord* orec)
 {
+    spdlog::debug("****************************************");
     spdlog::debug("{}",message);
     spdlog::debug("({},{}) {} occs", (unsigned int) orec->pair.left, (unsigned int) orec->pair.right, orec->freq);
+    spdlog::debug("****************************************");
 }
 
 /**
@@ -101,6 +105,7 @@ void print_record(const std::string message, const Trecord* orec)
  */
 void print_ref(const std::vector<unsigned char>& rvec)
 {
+    spdlog::debug("****************************************");
     std::ostringstream oss;
     
     // Use range-based for loop for clarity
@@ -109,6 +114,7 @@ void print_ref(const std::vector<unsigned char>& rvec)
     }
 
     spdlog::debug("Reference string (in numeric form): {}", oss.str());
+    spdlog::debug("****************************************");
 }
 
 /**
@@ -117,6 +123,7 @@ void print_ref(const std::vector<unsigned char>& rvec)
  */
 void print_hash_ranges()
 {
+    spdlog::debug("****************************************");
     std::string values = "";
     for (const auto& [key, value] : hash_ranges){
         for (int i = 0; i < value.size(); i++){
@@ -126,6 +133,7 @@ void print_hash_ranges()
         spdlog::debug("Key: {}, Values: {}", key, values);
         values = "";
     }
+    spdlog::debug("****************************************");
 }
 
 /**
@@ -135,6 +143,7 @@ void print_hash_ranges()
 
 void print_phrase_lst(const std::vector<unsigned char>& rvec)
 {
+    spdlog::debug("#################################");
     std::string content;
     for(Phrase phrase : phrase_lst){
         content = "";
@@ -411,7 +420,7 @@ void phraseBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right
     }
 
     // Debug
-    // print_phrase_lst(rvec);
+    print_phrase_lst(rvec);
 }
 
 /**
@@ -502,7 +511,7 @@ void sourceBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right
     }
 
     // Debug
-    // print_phrase_lst(rvec);
+    print_phrase_lst(rvec);
 }
 
 /**
@@ -515,9 +524,12 @@ void DecreaseFreq(int left, int right)
     Tpair new_pair;
     new_pair.left = left;
     new_pair.right = right;
-    int id = searchHash(Hash,pair);
+    int id = searchHash(Hash,new_pair);
     spdlog::debug("ID: {}", id);
+    spdlog::debug("Prior to decrease");
+    print_all_records();
     decFreq(&Heap,id);
+    spdlog::debug("After decrease");
     print_all_records();
 }
 
@@ -531,14 +543,17 @@ void IncreaseFreq(int left, int right)
     Tpair new_pair;
     new_pair.left = left;
     new_pair.right = right;
-    int id = searchHash(Hash,pair);
+    int id = searchHash(Hash,new_pair);
     spdlog::debug("ID: {}", id);
+    spdlog::debug("Prior to increase");
+    print_all_records();
     if (id == -1){
-        id = insertRecord(&Rec,pair);
+        id = insertRecord(&Rec,new_pair);
     }
     else{
         incFreq(&Heap,id);
     }
+    spdlog::debug("After increase");
     print_all_records();
 }
 
@@ -552,7 +567,7 @@ void repair(std::vector<unsigned char>& rvec)
 {
     int id = extractMax(&Heap);
     Trecord* orec = &Rec.records[id];
-    // print_record("Maximum freq pair", orec);
+    print_record("Maximum freq pair", orec);
     int left_elem = orec->pair.left;
     int right_elem = orec->pair.right;
     std::string pair_key = std::to_string(orec->pair.left) + "-" + std::to_string(orec->pair.right);
@@ -721,9 +736,13 @@ void repair(std::vector<unsigned char>& rvec)
                     // Assumes that the occurances are stored in order.
                     left = left - decrement;
 
+                    spdlog::debug("Left: {}", left);
+
                     // If the two elements are not at the beginning or end of the phrase then replace happens fully within the phrase
                     if (left > curr_phrase->lrange && left + 1 < curr_phrase->rrange)
                     {
+                        spdlog::debug("Left middle, right middle");
+
                         // Decrease frequency of left pair effected by merge.
                         DecreaseFreq(rvec[left-1], rvec[left]);
                         // Increase frequency of new pair.
@@ -736,6 +755,8 @@ void repair(std::vector<unsigned char>& rvec)
                     // If both elments are at the beginning and end of the phrases, then have to look at the end of the prev and start of the next
                     else if (left == curr_phrase->lrange && left + 1 == curr_phrase->rrange)
                     {
+                        spdlog::debug("Left end, right end");
+
                         // For the left pair effected have to look at previous phrase
                         if (curr_phrase != phrase_lst.begin())
                         {
@@ -778,6 +799,7 @@ void repair(std::vector<unsigned char>& rvec)
                     // If the left elem is at the beginning of phrase and the right elem is in middle of phrase
                     else if (left == curr_phrase->lrange && left + 1 < curr_phrase->rrange)
                     {
+                        spdlog::debug("Left end, right middle");
                         // For the left pair effected have to look at previous phrase
                         if (curr_phrase != phrase_lst.begin())
                         {
@@ -836,7 +858,6 @@ void repair(std::vector<unsigned char>& rvec)
                     if (left >= curr_phrase->lrange && left + 1 <= curr_phrase->rrange)
                     {
                         spdlog::debug("In-between");
-                        spdlog::debug("Left: {}", left);
                         spdlog::debug("lrange: {}, rrange: {}", curr_phrase->lrange, curr_phrase->rrange);
                         curr_phrase->rrange = curr_phrase->rrange - 1;
                         spdlog::debug("updated lrange: {}, rrange: {}", curr_phrase->lrange, curr_phrase->rrange);
@@ -844,7 +865,6 @@ void repair(std::vector<unsigned char>& rvec)
                     else if (left < curr_phrase->lrange)
                     {
                         spdlog::debug("Smaller than lrange");
-                        spdlog::debug("Left: {}", left);
                         spdlog::debug("lrange: {}, rrange: {}", curr_phrase->lrange, curr_phrase->rrange);
                         curr_phrase->lrange = curr_phrase->lrange - 1;
                         curr_phrase->rrange = curr_phrase->rrange - 1;
@@ -853,7 +873,6 @@ void repair(std::vector<unsigned char>& rvec)
                     else if (left > curr_phrase->rrange)
                     {
                         spdlog::debug("Greater than rrange");
-                        spdlog::debug("Left: {}", left);
                         spdlog::debug("lrange: {}, rrange: {}", curr_phrase->lrange, curr_phrase->rrange);
                         spdlog::debug("updated lrange: {}, rrange: {}", curr_phrase->lrange, curr_phrase->rrange);
                         continue;
