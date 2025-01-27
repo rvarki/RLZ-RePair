@@ -411,7 +411,7 @@ void phraseBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right
     }
 
     // Debug
-    print_phrase_lst(rvec);
+    // print_phrase_lst(rvec);
 }
 
 /**
@@ -502,8 +502,47 @@ void sourceBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right
     }
 
     // Debug
-    print_phrase_lst(rvec);
+    // print_phrase_lst(rvec);
 }
+
+/**
+ * @brief Decrease the frequency of a pair in the heap
+ */
+void DecreaseFreq(int left, int right)
+{
+    spdlog::debug("Decrease Frequency called");
+    spdlog::debug("left {}, right {}", left, right);
+    Tpair new_pair;
+    new_pair.left = left;
+    new_pair.right = right;
+    int id = searchHash(Hash,pair);
+    spdlog::debug("ID: {}", id);
+    decFreq(&Heap,id);
+    print_all_records();
+}
+
+/**
+ * @brief Increase the frequency of a pair in the heap
+ */
+void IncreaseFreq(int left, int right)
+{
+    spdlog::debug("Increase Frequency called");
+    spdlog::debug("left {}, right {}", left, right);
+    Tpair new_pair;
+    new_pair.left = left;
+    new_pair.right = right;
+    int id = searchHash(Hash,pair);
+    spdlog::debug("ID: {}", id);
+    if (id == -1){
+        id = insertRecord(&Rec,pair);
+    }
+    else{
+        incFreq(&Heap,id);
+    }
+    print_all_records();
+}
+
+
 
 /**
  * @brief RePair
@@ -513,14 +552,12 @@ void repair(std::vector<unsigned char>& rvec)
 {
     int id = extractMax(&Heap);
     Trecord* orec = &Rec.records[id];
-    print_record("Maximum freq pair", orec);
+    // print_record("Maximum freq pair", orec);
     int left_elem = orec->pair.left;
     int right_elem = orec->pair.right;
     std::string pair_key = std::to_string(orec->pair.left) + "-" + std::to_string(orec->pair.right);
     phraseBoundaries(rvec, orec->pair.left, orec->pair.right);
     sourceBoundaries(rvec, orec->pair.left, orec->pair.right);
-
-    spdlog::debug("GETS TO START OF REPAIR");
 
     // Loop through the phrases
     for (auto curr_phrase = phrase_lst.begin(); curr_phrase != phrase_lst.end(); curr_phrase++) 
@@ -544,83 +581,52 @@ void repair(std::vector<unsigned char>& rvec)
                     if (curr_elem != curr_phrase->content.begin() && next_elem != std::prev(curr_phrase->content.end()))
                     {
                         // Decrease frequency of left pair effected by merge.
-                        pair.left = *(std::prev(curr_elem));
-                        pair.right = *(curr_elem);
-                        id = searchHash(Hash,pair);
-                        decFreq(&Heap,id);
+                        DecreaseFreq(*(std::prev(curr_elem)), *(curr_elem));
                         // Increase frequency of new pair.
-                        pair.right = n;
-                        id = searchHash(Hash,pair);
-                        // New pair, so insert
-                        if (id == -1){
-                            id = insertRecord(&Rec,pair);
-                        }
-                        else{
-                            incFreq(&Heap,id);
-                        }
+                        IncreaseFreq(*(std::prev(curr_elem)), n);
                         // Decrease frequency of right pair effected by merge.
-                        pair.left = *(next_elem);
-                        pair.right = *(std::next(next_elem));
-                        id = searchHash(Hash,pair);
-                        decFreq(&Heap,id);
+                        DecreaseFreq(*(next_elem), *(std::next(next_elem)));
                         // Increase frequency of new pair.
-                        pair.left = n;
-                        id = searchHash(Hash,pair);
-                        // New pair, so insert
-                        if (id == -1){
-                            id = insertRecord(&Rec,pair);
-                        }
-                        else{
-                            incFreq(&Heap,id);
-                        }
+                        IncreaseFreq(n, *(std::next(next_elem)));
                     }
                     // If both elments are at the beginning and end of the phrases, then have to look at the end of the prev and start of the next
                     else if (curr_elem == curr_phrase->content.begin() && next_elem == std::prev(curr_phrase->content.end()))
                     {
-                        pair.right = *(curr_elem);
                         // For the left pair effected have to look at previous phrase
-                        if (curr_phrase != phrase_lst.begin()){
+                        if (curr_phrase != phrase_lst.begin())
+                        {
                             auto prev_phrase = std::prev(curr_phrase);
-                            if (prev_phrase->exp){
-                                pair.left = prev_phrase->content.back();
+                            if (prev_phrase->exp)
+                            {
+                                // Decrease frequency of left pair effected by merge.
+                                DecreaseFreq(prev_phrase->content.back(), *(curr_elem));
+                                // Increase frequency of new pair.
+                                IncreaseFreq(prev_phrase->content.back(), n);
                             }
-                            else{
-                                pair.left = rvec[prev_phrase->rrange];
-                            }
-                            id = searchHash(Hash,pair);
-                            decFreq(&Heap,id);
-                            // Increase frequency of new pair.
-                            pair.right = n;
-                            id = searchHash(Hash,pair);
-                            // New pair, so insert
-                            if (id == -1){
-                                id = insertRecord(&Rec,pair);
-                            }
-                            else{
-                                incFreq(&Heap,id);
+                            else
+                            {
+                                // Decrease frequency of left pair effected by merge.
+                                DecreaseFreq(rvec[prev_phrase->rrange], *(curr_elem));
+                                // Increase frequency of new pair.
+                                IncreaseFreq(rvec[prev_phrase->rrange], n);
                             }
                         }
                         pair.left = *(next_elem);
                         // For the right pair effected have to look at next phrase
                         if (curr_phrase != std::prev(phrase_lst.end())){
                             auto next_phrase = std::next(curr_phrase);
-                            if (next_phrase->exp){
-                                pair.right = next_phrase->content.front();
+                            if (next_phrase->exp)
+                            {
+                                // Decrease frequency of right pair effected by merge.
+                                DecreaseFreq(*(next_elem), next_phrase->content.front());
+                                // Increase frequency of new pair
+                                IncreaseFreq(n, next_phrase->content.front());
                             }
                             else{
-                                pair.right = rvec[next_phrase->lrange];
-                            }
-                            id = searchHash(Hash,pair);
-                            decFreq(&Heap,id);
-                            // Increase frequency of new pair.
-                            pair.left = n;
-                            id = searchHash(Hash,pair);
-                            // New pair, so insert
-                            if (id == -1){
-                                id = insertRecord(&Rec,pair);
-                            }
-                            else{
-                                incFreq(&Heap,id);
+                                // Decrease frequency of right pair effected by merge.
+                                DecreaseFreq(*(next_elem), rvec[next_phrase->lrange]);
+                                // Increase frequency of new pair
+                                IncreaseFreq(n, rvec[next_phrase->lrange]);
                             }
                         }
                     }
@@ -629,85 +635,60 @@ void repair(std::vector<unsigned char>& rvec)
                     {
                         pair.right = *(curr_elem);
                         // For the left pair effected have to look at previous phrase
-                        if (curr_phrase != phrase_lst.begin()){
+                        if (curr_phrase != phrase_lst.begin())
+                        {
                             auto prev_phrase = std::prev(curr_phrase);
-                            if (prev_phrase->exp){
-                                pair.left = prev_phrase->content.back();
+                            if (prev_phrase->exp)
+                            {
+                                 // Decrease frequency of left pair effected by merge.
+                                DecreaseFreq(prev_phrase->content.back(), *(curr_elem));
+                                // Increase frequency of new pair.
+                                IncreaseFreq(prev_phrase->content.back(), n);
                             }
-                            else{
-                                pair.left = rvec[prev_phrase->rrange];
-                            }
-                            id = searchHash(Hash,pair);
-                            decFreq(&Heap,id);
-                            // Increase frequency of new pair.
-                            pair.right = n;
-                            id = searchHash(Hash,pair);
-                            // New pair, so insert
-                            if (id == -1){
-                                id = insertRecord(&Rec,pair);
-                            }
-                            else{
-                                incFreq(&Heap,id);
+                            else
+                            {
+                                // Decrease frequency of left pair effected by merge.
+                                DecreaseFreq(rvec[prev_phrase->rrange], *(curr_elem));
+                                // Increase frequency of new pair.
+                                IncreaseFreq(rvec[prev_phrase->rrange], n);
                             }
                         }
                         // Decrease frequency of right pair effected by merge.
-                        pair.left = *(next_elem);
-                        pair.right = *(std::next(next_elem));
-                        id = searchHash(Hash,pair);
-                        decFreq(&Heap,id);
+                        DecreaseFreq(*(next_elem), *(std::next(next_elem)));
                         // Increase frequency of new pair.
-                        pair.left = n;
-                        id = searchHash(Hash,pair);
-                        // New pair, so insert
-                        if (id == -1){
-                            id = insertRecord(&Rec,pair);
-                        }
-                        else{
-                            incFreq(&Heap,id);
-                        }
+                        IncreaseFreq(n, *(std::next(next_elem)));
+
                     }
                     // If the left elem is in the middle of the phrase and the right elem is at the end of the phrase
                     else if (curr_elem != curr_phrase->content.begin() && next_elem == std::prev(curr_phrase->content.end()))
                     {
                         // Decrease frequency of left pair effected by merge.
-                        pair.left = *(std::prev(curr_elem));
-                        pair.right = *(curr_elem);
-                        id = searchHash(Hash,pair);
-                        decFreq(&Heap,id);
+                        DecreaseFreq(*(std::prev(curr_elem)), *(curr_elem));
                         // Increase frequency of new pair.
-                        pair.right = n;
-                        id = searchHash(Hash,pair);
-                        // New pair, so insert
-                        if (id == -1){
-                            id = insertRecord(&Rec,pair);
-                        }
-                        else{
-                            incFreq(&Heap,id);
-                        }
-                        pair.left = *(next_elem);
+                        IncreaseFreq(*(std::prev(curr_elem)), n);
+
+                       
                         // For the right pair effected have to look at next phrase
-                        if (curr_phrase != std::prev(phrase_lst.end())){
+                        if (curr_phrase != std::prev(phrase_lst.end()))
+                        {
                             auto next_phrase = std::next(curr_phrase);
-                            if (next_phrase->exp){
-                                pair.right = next_phrase->content.front();
+                            if (next_phrase->exp)
+                            {
+                                // Decrease frequency of right pair effected by merge.
+                                DecreaseFreq(*(next_elem), next_phrase->content.front());
+                                // Increase frequency of new pair
+                                IncreaseFreq(n, next_phrase->content.front());
                             }
-                            else{
-                                pair.right = rvec[next_phrase->lrange];
-                            }
-                            id = searchHash(Hash,pair);
-                            decFreq(&Heap,id);
-                            // Increase frequency of new pair.
-                            pair.left = n;
-                            id = searchHash(Hash,pair);
-                            // New pair, so insert
-                            if (id == -1){
-                                id = insertRecord(&Rec,pair);
-                            }
-                            else{
-                                incFreq(&Heap,id);
+                            else
+                            {
+                                 // Decrease frequency of right pair effected by merge.
+                                DecreaseFreq(*(next_elem), rvec[next_phrase->lrange]);
+                                // Increase frequency of new pair
+                                IncreaseFreq(n, rvec[next_phrase->lrange]);
                             }
                         }
                     }
+
                     // Delete twice for both elements in the bi-gram
                     curr_elem = curr_phrase->content.erase(curr_elem);
                     curr_elem = curr_phrase->content.erase(curr_elem);
@@ -715,7 +696,7 @@ void repair(std::vector<unsigned char>& rvec)
                     curr_phrase->content.insert(curr_elem, n);
                 } 
                 else{
-                    curr_elem = next_elem;
+                    curr_elem = std::next(curr_elem);
                 }
             }
         }
@@ -726,16 +707,14 @@ void repair(std::vector<unsigned char>& rvec)
             // If it exists in Ref then we might have to make changes to non-explicit phrases.
             if (hash_ranges.find(pair_key) != hash_ranges.end())
             {
-                spdlog::debug("BI-GRAM exists in REF");
                 // Dummy value (think of better way)
-                int prev_left = -1;
+                int prev_left = 1000;
                 int decrement = 0;
 
                 // Could have multiple occurances in Ref
                 for (int left : hash_ranges[pair_key])
                 {
-                    // If the highest occuring pair occurs like this cccc in the Ref then the next bi-gram occurance would not exist after the first replacement
-                    if (prev_left - left == 1)
+                    if (left - prev_left == 1)
                         continue;
                     
                     // Have to adjust the next occurance position after the previous replacement. Subtract up to the number of replacements previous done in reference.
@@ -746,167 +725,109 @@ void repair(std::vector<unsigned char>& rvec)
                     if (left > curr_phrase->lrange && left + 1 < curr_phrase->rrange)
                     {
                         // Decrease frequency of left pair effected by merge.
-                        pair.left = rvec[left-1];
-                        pair.right = rvec[left];
-                        id = searchHash(Hash,pair);
-                        decFreq(&Heap,id);
+                        DecreaseFreq(rvec[left-1], rvec[left]);
                         // Increase frequency of new pair.
-                        pair.right = n;
-                        id = searchHash(Hash,pair);
-                        // New pair, so insert
-                        if (id == -1){
-                            id = insertRecord(&Rec,pair);
-                        }
-                        else{
-                            incFreq(&Heap,id);
-                        }
+                        IncreaseFreq(rvec[left-1], n);
                         // Decrease frequency of right pair effected by merge.
-                        pair.left = rvec[left+1];
-                        pair.right = rvec[left+2];
-                        id = searchHash(Hash,pair);
-                        decFreq(&Heap,id);
+                        DecreaseFreq(rvec[left+1], rvec[left+2]);
                         // Increase frequency of new pair.
-                        pair.left = n;
-                        id = searchHash(Hash,pair);
-                        // New pair, so insert
-                        if (id == -1){
-                            id = insertRecord(&Rec,pair);
-                        }
-                        else{
-                            incFreq(&Heap,id);
-                        }
+                        IncreaseFreq(n, rvec[left+2]);
                     }
                     // If both elments are at the beginning and end of the phrases, then have to look at the end of the prev and start of the next
                     else if (left == curr_phrase->lrange && left + 1 == curr_phrase->rrange)
                     {
-                        pair.right = rvec[left];
                         // For the left pair effected have to look at previous phrase
-                        if (curr_phrase != phrase_lst.begin()){
+                        if (curr_phrase != phrase_lst.begin())
+                        {
                             auto prev_phrase = std::prev(curr_phrase);
-                            if (prev_phrase->exp){
-                                pair.left = prev_phrase->content.back();
+                            if (prev_phrase->exp)
+                            {
+                                // Decrease frequency of left pair effected by merge.
+                                DecreaseFreq(prev_phrase->content.back(), rvec[left]);
+                                // Increase frequency of new pair.
+                                IncreaseFreq(prev_phrase->content.back(), n);
                             }
-                            else{
-                                pair.left = rvec[prev_phrase->rrange];
-                            }
-                            id = searchHash(Hash,pair);
-                            decFreq(&Heap,id);
-                            // Increase frequency of new pair.
-                            pair.right = n;
-                            id = searchHash(Hash,pair);
-                            // New pair, so insert
-                            if (id == -1){
-                                id = insertRecord(&Rec,pair);
-                            }
-                            else{
-                                incFreq(&Heap,id);
+                            else
+                            {
+                                // Decrease frequency of left pair effected by merge.
+                                DecreaseFreq(rvec[prev_phrase->rrange], rvec[left]);
+                                // Increase frequency of new pair.
+                                IncreaseFreq(rvec[prev_phrase->rrange], n);
                             }
                         }
-                        pair.left = rvec[left+1];
+                        
                         // For the right pair effected have to look at next phrase
-                        if (curr_phrase != std::prev(phrase_lst.end())){
+                        if (curr_phrase != std::prev(phrase_lst.end()))
+                        {
                             auto next_phrase = std::next(curr_phrase);
                             if (next_phrase->exp){
-                                pair.right = next_phrase->content.front();
+                                // Decrease frequency of right pair effected by merge.
+                                DecreaseFreq(rvec[left+1], next_phrase->content.front());
+                                // Increase frequency of new pair
+                                IncreaseFreq(n, next_phrase->content.front());
                             }
-                            else{
-                                pair.right = rvec[next_phrase->lrange];
-                            }
-                            id = searchHash(Hash,pair);
-                            decFreq(&Heap,id);
-                            // Increase frequency of new pair.
-                            pair.left = n;
-                            id = searchHash(Hash,pair);
-                            // New pair, so insert
-                            if (id == -1){
-                                id = insertRecord(&Rec,pair);
-                            }
-                            else{
-                                incFreq(&Heap,id);
+                            else
+                            {
+                                // Decrease frequency of right pair effected by merge.
+                                DecreaseFreq(rvec[left+1], rvec[next_phrase->lrange]);
+                                // Increase frequency of new pair
+                                IncreaseFreq(n, rvec[next_phrase->lrange]);
                             }
                         }
                     }
                     // If the left elem is at the beginning of phrase and the right elem is in middle of phrase
                     else if (left == curr_phrase->lrange && left + 1 < curr_phrase->rrange)
                     {
-                        pair.right = rvec[left];
                         // For the left pair effected have to look at previous phrase
-                        if (curr_phrase != phrase_lst.begin()){
+                        if (curr_phrase != phrase_lst.begin())
+                        {
                             auto prev_phrase = std::prev(curr_phrase);
-                            if (prev_phrase->exp){
-                                pair.left = prev_phrase->content.back();
+                            if (prev_phrase->exp)
+                            {
+                                // Decrease frequency of left pair effected by merge.
+                                DecreaseFreq(prev_phrase->content.back(), rvec[left]);
+                                // Increase frequency of new pair.
+                                IncreaseFreq(prev_phrase->content.back(), n);
                             }
-                            else{
-                                pair.left = rvec[prev_phrase->rrange];
-                            }
-                            id = searchHash(Hash,pair);
-                            decFreq(&Heap,id);
-                            // Increase frequency of new pair.
-                            pair.right = n;
-                            id = searchHash(Hash,pair);
-                            // New pair, so insert
-                            if (id == -1){
-                                id = insertRecord(&Rec,pair);
-                            }
-                            else{
-                                incFreq(&Heap,id);
+                            else
+                            {
+                                // Decrease frequency of left pair effected by merge.
+                                DecreaseFreq(rvec[prev_phrase->rrange], rvec[left]);
+                                // Increase frequency of new pair.
+                                IncreaseFreq(rvec[prev_phrase->rrange], n);
                             }
                         }
                         // Decrease frequency of right pair effected by merge.
-                        pair.left = rvec[left+1];
-                        pair.right = rvec[left+2];
-                        id = searchHash(Hash,pair);
-                        decFreq(&Heap,id);
+                        DecreaseFreq(rvec[left+1], rvec[left+2]);
                         // Increase frequency of new pair.
-                        pair.left = n;
-                        id = searchHash(Hash,pair);
-                        // New pair, so insert
-                        if (id == -1){
-                            id = insertRecord(&Rec,pair);
-                        }
-                        else{
-                            incFreq(&Heap,id);
-                        }
+                        IncreaseFreq(n, rvec[left+2]);
                     }
                     // If the left elem is in the middle of the phrase and the right elem is at the end of the phrase
                     else if (left > curr_phrase->lrange && left + 1 == curr_phrase->rrange)
                     {
+                        spdlog::debug("Left middle, right end");
                         // Decrease frequency of left pair effected by merge.
-                        pair.left = rvec[left-1];
-                        pair.right = rvec[left];
-                        id = searchHash(Hash,pair);
-                        decFreq(&Heap,id);
+                        DecreaseFreq(rvec[left-1], rvec[left]);
                         // Increase frequency of new pair.
-                        pair.right = n;
-                        id = searchHash(Hash,pair);
-                        // New pair, so insert
-                        if (id == -1){
-                            id = insertRecord(&Rec,pair);
-                        }
-                        else{
-                            incFreq(&Heap,id);
-                        }
-                        pair.left = rvec[left+1];
+                        IncreaseFreq(rvec[left-1], n);
+                        
                         // For the right pair effected have to look at next phrase
-                        if (curr_phrase != std::prev(phrase_lst.end())){
+                        if (curr_phrase != std::prev(phrase_lst.end()))
+                        {
                             auto next_phrase = std::next(curr_phrase);
-                            if (next_phrase->exp){
-                                pair.right = next_phrase->content.front();
+                            if (next_phrase->exp)
+                            {
+                                // Decrease frequency of right pair effected by merge.
+                                DecreaseFreq(rvec[left+1], next_phrase->content.front());
+                                // Increase frequency of new pair
+                                IncreaseFreq(n, next_phrase->content.front());
                             }
-                            else{
-                                pair.right = rvec[next_phrase->lrange];
-                            }
-                            id = searchHash(Hash,pair);
-                            decFreq(&Heap,id);
-                            // Increase frequency of new pair.
-                            pair.left = n;
-                            id = searchHash(Hash,pair);
-                            // New pair, so insert
-                            if (id == -1){
-                                id = insertRecord(&Rec,pair);
-                            }
-                            else{
-                                incFreq(&Heap,id);
+                            else
+                            {
+                                // Decrease frequency of right pair effected by merge.
+                                DecreaseFreq(rvec[left+1], rvec[next_phrase->lrange]);
+                                // Increase frequency of new pair
+                                IncreaseFreq(n, rvec[next_phrase->lrange]);
                             }
                         }
                     }
@@ -914,18 +835,27 @@ void repair(std::vector<unsigned char>& rvec)
                     // How to change non explicit phrase depending on bi-gram replaced
                     if (left >= curr_phrase->lrange && left + 1 <= curr_phrase->rrange)
                     {
-                        spdlog::debug("Left: in between");
+                        spdlog::debug("In-between");
+                        spdlog::debug("Left: {}", left);
+                        spdlog::debug("lrange: {}, rrange: {}", curr_phrase->lrange, curr_phrase->rrange);
                         curr_phrase->rrange = curr_phrase->rrange - 1;
+                        spdlog::debug("updated lrange: {}, rrange: {}", curr_phrase->lrange, curr_phrase->rrange);
                     }
                     else if (left < curr_phrase->lrange)
                     {
-                        spdlog::debug("Left: left");
+                        spdlog::debug("Smaller than lrange");
+                        spdlog::debug("Left: {}", left);
+                        spdlog::debug("lrange: {}, rrange: {}", curr_phrase->lrange, curr_phrase->rrange);
                         curr_phrase->lrange = curr_phrase->lrange - 1;
                         curr_phrase->rrange = curr_phrase->rrange - 1;
+                        spdlog::debug("updated lrange: {}, rrange: {}", curr_phrase->lrange, curr_phrase->rrange);
                     }
                     else if (left > curr_phrase->rrange)
                     {
-                        spdlog::debug("Left: right");
+                        spdlog::debug("Greater than rrange");
+                        spdlog::debug("Left: {}", left);
+                        spdlog::debug("lrange: {}, rrange: {}", curr_phrase->lrange, curr_phrase->rrange);
+                        spdlog::debug("updated lrange: {}, rrange: {}", curr_phrase->lrange, curr_phrase->rrange);
                         continue;
                     }
 
