@@ -583,7 +583,7 @@ void repair(std::vector<unsigned char>& rvec)
         sourceBoundaries(rvec, left_elem, right_elem);
 
         // Final rvec for this loop (needed for pair replacement when we look at left non-explicit phrase since we have already modified it)
-        std::vector<unsigned char> final_rvec;
+        std::vector<unsigned char> final_rvec = rvec;
 
         // Loop through the phrases
         for (auto curr_phrase = phrase_lst.begin(); curr_phrase != phrase_lst.end(); curr_phrase++) 
@@ -633,7 +633,8 @@ void repair(std::vector<unsigned char>& rvec)
                                 }
                             }
                             // For the right pair effected have to look at next phrase
-                            if (curr_phrase != std::prev(phrase_lst.end())){
+                            if (curr_phrase != std::prev(phrase_lst.end()))
+                            {
                                 auto next_phrase = std::next(curr_phrase);
                                 if (next_phrase->exp)
                                 {
