@@ -10,8 +10,6 @@ class Phrase {
         bool exp;
         int lrange;
         int rrange;
-        Phrase* lneighbor;
-        Phrase* rneighbor;
         std::list<unsigned char> content;
 
         // Constructors
