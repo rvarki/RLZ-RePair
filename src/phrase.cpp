@@ -6,7 +6,7 @@ Phrase::Phrase()
 Phrase::Phrase(int lrange, int rrange)
     : exp(false), lrange(lrange), rrange(rrange) {}
 
-Phrase::Phrase(std::list<unsigned char> content)
+Phrase::Phrase(std::list<unsigned int> content)
     : exp(true), lrange(-1), rrange(-1), content(content) {}
 
 Phrase::~Phrase() {}

@@ -10,12 +10,12 @@ class Phrase {
         bool exp;
         int lrange;
         int rrange;
-        std::list<unsigned char> content;
+        std::list<unsigned int> content;
 
         // Constructors
         Phrase();
         explicit Phrase(int lrange, int rrange);
-        explicit Phrase(std::list<unsigned char> content);
+        explicit Phrase(std::list<unsigned int> content);
 
         // Destructor
         ~Phrase();

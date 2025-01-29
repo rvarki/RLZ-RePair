@@ -32,6 +32,9 @@ char map[256]; // How to map back to the original chars.
 int alpha; // Number of characters used prior to RePair (alpha should actually start at 0, but currently set at 1 to avoid error in building max heap)
 int n; // Technically |R| n - alpha - 1 gives number of rules
 
+// Stores the int version of the reference.
+std::vector<unsigned int> rvec;
+
 // Hash table containing the reference ranges of pairs (bi-grams). 
 // The vector contains the left endpoint of the range corresponding to the pair in the bi-gram since the range is left endpoint to left endpoint + 1
 std::unordered_map<std::string, std::vector<int>> hash_ranges; 
@@ -100,17 +103,16 @@ void print_record(const std::string message, const Trecord* orec)
 
 /**
  * @brief Prints the reference during RePair. Debug purposes only.
- * @param[in] rvec [std::vector<unsigned char>&] reference vector
  * @return void
  */
-void print_ref(const std::vector<unsigned char>& rvec)
+void print_ref()
 {
     spdlog::debug("****************************************");
     std::ostringstream oss;
     
     // Use range-based for loop for clarity
-    for (unsigned char c : rvec) {
-        oss << static_cast<int>(c) << " ";  // Use cast to int for numeric representation
+    for (int symbol : rvec) {
+        oss << symbol << " ";  
     }
 
     spdlog::debug("Reference string (in numeric form): {}", oss.str());
@@ -141,7 +143,7 @@ void print_hash_ranges()
  * @return void
  */
 
-void print_phrase_lst(const std::vector<unsigned char>& rvec)
+void print_phrase_lst()
 {
     spdlog::debug("#################################");
     std::string content;
@@ -151,12 +153,14 @@ void print_phrase_lst(const std::vector<unsigned char>& rvec)
             content += "Phrase (Not explicit): ";
             for(int i = phrase.lrange; i <= phrase.rrange; i++){
                 content += std::to_string(rvec[i]);
+                content += " ";
             }
         }
         else{
             content += "Phrase (explicit): ";
-            for (unsigned char i : phrase.content){
+            for (unsigned int i : phrase.content){
                 content += std::to_string(i);
+                content += " ";
             }
         }
         spdlog::debug("{}", content);
@@ -183,25 +187,33 @@ void print_phrase_lst(const std::vector<unsigned char>& rvec)
  * @return void
  */
 
-void prepareRef(std::vector<unsigned char>& rvec, int* chars, char* map, int size)
+void prepareRef(std::vector<unsigned char>& rtext)
 {
-    alpha = 1;
-    // Remaps the chars in the ref vector and upate chars array
-    for (int i = 0; i < rvec.size(); i++){
-        unsigned int x = rvec[i];
+    alpha = 0;
+
+    // Initialize the chars array to be -1 to indicate that no characters have been mapped yet.
+    for (int i = 0; i < 256; i++){
+        chars[i] = -1;
+    }
+
+    // Remaps the chars in the ref vector and update chars array
+    for (int i = 0; i < rtext.size(); i++){
+        unsigned char x = rtext[i];
+        spdlog::debug("This is {}", x);
         if (chars[x] == -1){
             chars[x] = alpha++;
         }
-        rvec[i] = chars[x];          
+        rvec.push_back(chars[x]);          
     }
 
     // Updates the map array to undo remapping.
-    for (int i = 0; i < size; i++){
+    for (int i = 0; i < 256; i++){
         if (chars[i] != -1){
             map[chars[i]] = i;
         }
     }
-    print_ref(rvec);
+
+    print_ref();
 
     // Populate of hash table of ranges of reference bi-grams 
     for (int i = 1; i < rvec.size(); i++)
@@ -232,12 +244,11 @@ void prepareRef(std::vector<unsigned char>& rvec, int* chars, char* map, int siz
  * Max heap allows us to quickly find the bi-gram with the highest occurence.
  * We will also store the range that the bi-gram spans within a separate hash table.
  * 
- * @param[in] rvec [std::vector<unsigned char>&] the reference text 
  * @param[in] pfile [std::infstream&] the RLZ parse file stream
  * 
  * @return void?
  */
-void createMaxHeap(const std::vector<unsigned char>& rvec, std::ifstream& pfile)
+void createMaxHeap(std::ifstream& pfile)
 {
     // Create pair-freq heap (Thanks BigRePair)
     Rec = createRecords(factor, minsize);
@@ -246,8 +257,8 @@ void createMaxHeap(const std::vector<unsigned char>& rvec, std::ifstream& pfile)
     assocRecords(&Rec, &Hash, &Heap, NULL);
 
     uint64_t num_pairs, pos, len;
-    pair.left = '\0';
-    pair.right = '\0';
+    pair.left = -1;
+    pair.right = -1;
     int id;
 
     // First uint64_t bytes tell how many (pos,len) pairs are stored in the parse file
@@ -264,7 +275,7 @@ void createMaxHeap(const std::vector<unsigned char>& rvec, std::ifstream& pfile)
             pfile.read(reinterpret_cast<char*>(&len), sizeof(uint64_t));
             for (uint64_t j = 0; j < len; j++)
             {
-                if (pair.left == '\0'){
+                if (pair.left == -1){
                     pair.left = rvec[pos];
                 }
                 else{
@@ -303,7 +314,7 @@ void createMaxHeap(const std::vector<unsigned char>& rvec, std::ifstream& pfile)
  * @return void 
  */
 
-void populatePhrases(const std::vector<unsigned char>& rvec, std::ifstream& pfile)
+void populatePhrases(std::ifstream& pfile)
 {
     uint64_t num_pairs, pos, len;
 
@@ -329,17 +340,16 @@ void populatePhrases(const std::vector<unsigned char>& rvec, std::ifstream& pfil
     pfile.seekg(0, std::ios::beg);
 
     // Debug
-    print_phrase_lst(rvec);
+    print_phrase_lst();
 }
 
 /**
  * @brief Process the phrase list for the phrase boundary condition
  * 
- * @param[in] rvec
  * @return void
  */
 
-void phraseBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right_elem)
+void phraseBoundaries(int left_elem, int right_elem)
 {
     auto curr_phrase = phrase_lst.begin();
 
@@ -355,7 +365,7 @@ void phraseBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right
             {
                 if ((rvec[curr_phrase->rrange] == left_elem) && (rvec[next_phrase->lrange] == right_elem))
                 {
-                    std::list<unsigned char> content;
+                    std::list<unsigned int> content;
                     content.push_back(left_elem);
                     content.push_back(right_elem);
                     Phrase new_phrase(content);
@@ -420,13 +430,13 @@ void phraseBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right
     }
 
     // Debug
-    print_phrase_lst(rvec);
+    print_phrase_lst();
 }
 
 /**
  * @brief Process the phrase list for the source boundary condition
  */
-void sourceBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right_elem)
+void sourceBoundaries(int left_elem, int right_elem)
 {
     auto curr_phrase = phrase_lst.begin();
     // Iterate through the phrases in the phrase list
@@ -440,7 +450,7 @@ void sourceBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right
                 if (rvec[curr_phrase->lrange - 1] == left_elem && rvec[curr_phrase->lrange] == right_elem){
                     // If at the beginning of phrases, then no previous phrase
                     if (curr_phrase == phrase_lst.begin()){
-                        std::list<unsigned char> content;
+                        std::list<unsigned int> content;
                         content.push_back(rvec[curr_phrase->lrange]);
                         Phrase new_phrase(content);
                         phrase_lst.insert(curr_phrase, new_phrase);
@@ -454,7 +464,7 @@ void sourceBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right
                         }
                         // We have to create new explicit phrase anyways
                         else{
-                            std::list<unsigned char> content;
+                            std::list<unsigned int> content;
                             content.push_back(rvec[curr_phrase->lrange]);
                             Phrase new_phrase(content);
                             phrase_lst.insert(curr_phrase, new_phrase);
@@ -475,7 +485,7 @@ void sourceBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right
                 if (rvec[curr_phrase->rrange] == left_elem && rvec[curr_phrase->rrange + 1] == right_elem){
                     // If at the end of phrases, then no next phrase
                     if (curr_phrase == std::prev(phrase_lst.end())){
-                        std::list<unsigned char> content;
+                        std::list<unsigned int> content;
                         content.push_back(rvec[curr_phrase->rrange]);
                         Phrase new_phrase(content);
                         auto next_phrase = std::next(curr_phrase);
@@ -490,7 +500,7 @@ void sourceBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right
                         }
                         // We have to create new explicit phrase anyways
                         else{
-                            std::list<unsigned char> content;
+                            std::list<unsigned int> content;
                             content.push_back(rvec[curr_phrase->rrange]);
                             Phrase new_phrase(content);
                             phrase_lst.insert(next_phrase, new_phrase);
@@ -511,7 +521,7 @@ void sourceBoundaries(std::vector<unsigned char>& rvec, int left_elem, int right
     }
 
     // Debug
-    print_phrase_lst(rvec);
+    print_phrase_lst();
 }
 
 /**
@@ -563,8 +573,19 @@ void IncreaseFreq(int left, int right)
  * @brief RePair
  * @return void
  */
-void repair(std::vector<unsigned char>& rvec)
+void repair(std::ofstream& R, std::ofstream& C)
 {
+    // Write alpha to R file
+    R.write(reinterpret_cast<const char*>(&alpha), sizeof(int));
+    if (!R) {
+        spdlog::error("Error writing alpha to R file");
+    }
+    // Write map to R file
+    R.write(map, alpha);
+    if (!R) {
+        spdlog::error("Error writing map to R file");
+    }
+
     int id = extractMax(&Heap);
     while (id != -1)
     {
@@ -576,14 +597,21 @@ void repair(std::vector<unsigned char>& rvec)
             spdlog::debug("Max Frequency on Heap is 1");
             break;
         }
+
+        // Write pair to R file 
+        R.write(reinterpret_cast<const char*>(&(orec->pair)), sizeof(Tpair));
+        if (!R) {
+            spdlog::error("Error writing max occurrence pair to R file");
+        }
+
         int left_elem = orec->pair.left;
         int right_elem = orec->pair.right;
         std::string pair_key = std::to_string(left_elem) + "-" + std::to_string(right_elem);
-        phraseBoundaries(rvec, left_elem, right_elem);
-        sourceBoundaries(rvec, left_elem, right_elem);
+        phraseBoundaries(left_elem, right_elem);
+        sourceBoundaries(left_elem, right_elem);
 
         // Final rvec for this loop (needed for pair replacement when we look at left non-explicit phrase since we have already modified it)
-        std::vector<unsigned char> final_rvec = rvec;
+        std::vector<unsigned int> final_rvec = rvec;
 
         // Loop through the phrases
         for (auto curr_phrase = phrase_lst.begin(); curr_phrase != phrase_lst.end(); curr_phrase++) 
@@ -726,7 +754,7 @@ void repair(std::vector<unsigned char>& rvec)
                 spdlog::debug("NOT EXPLICIT PHRASE");
 
                 // Make copy rvec which we will keep modifying in this section to maintain the correct elements to be replaced (think of how not to do this)
-                std::vector<unsigned char> copy_rvec;
+                std::vector<unsigned int> copy_rvec;
 
                 // If it exists in Ref then we might have to make changes to non-explicit phrases.
                 if (hash_ranges.find(pair_key) != hash_ranges.end())
@@ -941,10 +969,24 @@ void repair(std::vector<unsigned char>& rvec)
         n++;
 
         // Debug
-        print_ref(rvec);
-        print_phrase_lst(rvec);
+        print_ref();
+        print_phrase_lst();
         print_all_records();
         spdlog::debug("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+    }
+
+    // Write the final integers to the C file
+    for(Phrase phrase : phrase_lst){
+        if (!(phrase.exp)){
+            for(int i = phrase.lrange; i <= phrase.rrange; i++){
+                C.write(reinterpret_cast<const char*>(&rvec[i]), sizeof(unsigned int));
+            }
+        }
+        else{
+            for (unsigned int i : phrase.content){
+                C.write(reinterpret_cast<const char*>(&i), sizeof(unsigned int));
+            }
+        }
     }
 
     spdlog::debug("END OF REPAIR");
@@ -985,8 +1027,8 @@ int main(int argc, char *argv[])
     rfile.seekg(0, std::ios::beg);
 
     // Read the Ref file into a vector of unsigned char
-    std::vector<unsigned char> rvec(rsize);
-    rfile.read(reinterpret_cast<char*>(rvec.data()), rsize);
+    std::vector<unsigned char> rtext(rsize);
+    rfile.read(reinterpret_cast<char*>(rtext.data()), rsize);
 
     // Opening RLZ parse
     std::ifstream pfile(rlz_parse, std::ios::binary | std::ios::in);
@@ -995,27 +1037,45 @@ int main(int argc, char *argv[])
         std::exit(EXIT_FAILURE);
     }
 
-    // Initialize the chars array to be -1 to indicate that no characters have been mapped yet.
-    for (int i = 0; i < 256; i++){
-        chars[i] = -1;
+    // Create R file
+    size_t last_dot = rlz_parse.find_last_of('.');
+    std::string Rf = rlz_parse.substr(0, last_dot) + ".R"; 
+    std::ofstream R(Rf, std::ios::binary);
+    if (!R) {
+        spdlog::error("Error opening {}", Rf);
+        std::exit(EXIT_FAILURE);
     }
 
-    // Process Ref and update the chars and map arrays.
-    prepareRef(rvec, chars, map, 256);
+    // Create C file
+    std::string Cf = rlz_parse.substr(0, last_dot) + ".C";
+    std::ofstream C(Cf, std::ios::binary);
+    if (!C) {
+        spdlog::error("Error opening {}", Cf);
+        std::exit(EXIT_FAILURE);
+    }
+
+    // Process Ref
+    prepareRef(rtext);
+
+    // Clear rtext
+    rtext.clear();
+    rtext.shrink_to_fit();
 
     // Calculate the size of the original sequence file using the len field of the pairs
     psize = calculate_parse_bytes(pfile);
     spdlog::debug("The parse encodes for {} bytes", psize);
 
     // Call populatePhrases function
-    populatePhrases(rvec, pfile);
+    populatePhrases(pfile);
 
     // Call createMaxHeap function
-    createMaxHeap(rvec, pfile);
+    createMaxHeap(pfile);
 
     // RePair
-    repair(rvec);
+    repair(R, C);
     
+    R.close();
+    C.close();
     rfile.close();
     pfile.close();
     return 0;
