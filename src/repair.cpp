@@ -29,8 +29,9 @@ Trarray Rec; // records
 Tpair pair; // pair for freq
 int chars[256]; // Indicates what chars are present in both the ref and seq parse.
 char map[256]; // How to map back to the original chars.
-int alpha; // Number of characters used prior to RePair (alpha should actually start at 0, but currently set at 1 to avoid error in building max heap)
-int n; // Technically |R| n - alpha - 1 gives number of rules
+int alpha; // Number of characters used prior to RePair
+int n; // Technically |R| n - alpha gives number of rules
+int c = 0; // The number of chars encoded in .C file 
 
 // Stores the int version of the reference.
 std::vector<unsigned int> rvec;
@@ -45,10 +46,10 @@ std::list<Phrase> phrase_lst;
 /**
  * @brief Calculates the number of bytes encoded in the RLZ parse.
  * 
- * @param[in] pfile [ifstream] the input file stream of the RLZ parse file.
- * @return the number of bytes encoded by the RLZ parse file.
+ * @param[in] pfile [std::ifstream&] the input file stream of the RLZ parse.
+ * @return the number of bytes encoded by the RLZ parse.
  */
-uint64_t calculate_parse_bytes(std::ifstream& pfile)
+uint64_t calculateParseBytes(std::ifstream& pfile)
 {
     int count = 1;
     uint64_t seq_orig_size = 0;
@@ -71,43 +72,43 @@ uint64_t calculate_parse_bytes(std::ifstream& pfile)
 }
 
 /**
- * @brief Prints all records in the max heap (thanks BigRePair). Debug purposes only.
+ * @brief Prints all records in the max heap. Debug purposes only.
  * @return void
  */
 
-void print_all_records()
+void printAllRecords()
 {
-    spdlog::debug("****************************************");
-    spdlog::debug("Current records in the heap");
+    spdlog::trace("Current records in the heap");
     for (int i = 0; i < Rec.size; i++)
     {
-        spdlog::debug("({},{}) {} occs", (unsigned int) Rec.records[i].pair.left, (unsigned int) Rec.records[i].pair.right, Rec.records[i].freq);
+        spdlog::trace("({},{}) {} occs", Rec.records[i].pair.left, Rec.records[i].pair.right, Rec.records[i].freq);
     }
-    spdlog::debug("****************************************");
+    spdlog::trace("");
 }
 
 /**
- * @brief Prints specific record in the max heap with a message. Debug purposes only.
- * @param[in] message [string] the message to be printed with the record.
+ * @brief Prints specific record in the heap. Debug purposes only.
+ * 
+ * Prints the left and right elements of the record in addition to the frequency.
+ * 
+ * @param[in] message [std::string] the message to be printed with the record.
  * @param[in] orec [Trecord*] the record content to be printed.
  * @return void
  */
 
-void print_record(const std::string message, const Trecord* orec)
+void printRecord(const std::string message, const Trecord* orec)
 {
-    spdlog::debug("****************************************");
     spdlog::debug("{}",message);
     spdlog::debug("({},{}) {} occs", (unsigned int) orec->pair.left, (unsigned int) orec->pair.right, orec->freq);
-    spdlog::debug("****************************************");
+    spdlog::debug("");
 }
 
 /**
- * @brief Prints the reference during RePair. Debug purposes only.
+ * @brief Prints the int version of the reference. Debug purposes only.
  * @return void
  */
-void print_ref()
+void printRef()
 {
-    spdlog::debug("****************************************");
     std::ostringstream oss;
     
     // Use range-based for loop for clarity
@@ -115,37 +116,35 @@ void print_ref()
         oss << symbol << " ";  
     }
 
-    spdlog::debug("Reference string (in numeric form): {}", oss.str());
-    spdlog::debug("****************************************");
+    spdlog::trace("Reference string (in numeric form): {}", oss.str());
+    spdlog::trace("");
 }
 
 /**
- * @brief Prints the hash table of ranges contents
+ * @brief Prints the hash table of bi-grams in the reference.
  * @return void
  */
-void print_hash_ranges()
+void printHashRanges()
 {
-    spdlog::debug("****************************************");
     std::string values = "";
     for (const auto& [key, value] : hash_ranges){
         for (int i = 0; i < value.size(); i++){
             values += std::to_string(value[i]);
             values += " ";
         }
-        spdlog::debug("Key: {}, Values: {}", key, values);
+        spdlog::trace("Key: {}, Values: {}", key, values);
         values = "";
     }
-    spdlog::debug("****************************************");
+    spdlog::trace("");
 }
 
 /**
- * @brief Prints phrases in list
+ * @brief Prints the current phrases. Debug purposes only.
  * @return void
  */
 
-void print_phrase_lst()
+void printPhraseList()
 {
-    spdlog::debug("#################################");
     std::string content;
     for(Phrase phrase : phrase_lst){
         content = "";
@@ -163,26 +162,30 @@ void print_phrase_lst()
                 content += " ";
             }
         }
-        spdlog::debug("{}", content);
+        spdlog::trace("{}", content);
     }
-    spdlog::debug("#################################");
+    spdlog::trace("");
 }
 
 /**
- * @brief Remaps the chars in the Ref vector and updates the chars and map arrays (logic from BigRePair).
+ * @brief Convert the chars of reference to int.
  * 
- * Reasoning(?): UTF-8 chars are stored in 1 byte (8 bits, 0-255). However the Ref likely does not 
- * contain all chars which means wasted values between 0-255. We remap the chars in Ref to be 
- * between 0-|Ref| and write those values in the apporpriate cell in the chars array. We write the inverse 
- * of this operation in the map array. Doing this will allow us to know how many rules are created at the
- * end of RePair as well.
+ * This function remaps the characters in the reference sequence to integers. The remapping works as follows:
  * 
- * Additionally create hash table of the reference ranges bi-grams.
+ * When a new character is encountered in the reference, it is replaced with the corresponding integer from the chars array.
  * 
- * @param[in] rbuffer [std::vector<unsigned char>] The unsigned int representation of the reference.
- * @param[in] chars [int*] pointer to the head of the chars array.
- * @param[in] map [char*] pointer to the head of map array.
- * @param[in] size [int] size of the chars and map arrays.
+ * Each time a new character is encountered, the alpha variable, which tracks the number of unique characters, is assigned to 
+ * the position in the chars array corresponding to the integer version of the character.
+ * 
+ * The alpha variable is then incremented, ensuring that the next new character gets a unique integer.
+ * 
+ * A map array is also maintained to store the reverse mapping, allowing the original character to be retrieved from its integer representation.
+ * 
+ * The logic for this function was taken from RePair/BigRePair.
+ * 
+ * Additionally, currently creates a hash table that stores the positions of unique bi-grams in the reference
+ * 
+ * @param[in] rtext [std::vector<unsigned char>] The unsigned int representation of the .
  * 
  * @return void
  */
@@ -199,7 +202,6 @@ void prepareRef(std::vector<unsigned char>& rtext)
     // Remaps the chars in the ref vector and update chars array
     for (int i = 0; i < rtext.size(); i++){
         unsigned char x = rtext[i];
-        spdlog::debug("This is {}", x);
         if (chars[x] == -1){
             chars[x] = alpha++;
         }
@@ -213,7 +215,8 @@ void prepareRef(std::vector<unsigned char>& rtext)
         }
     }
 
-    print_ref();
+    // Set n to be alpha
+    n = alpha;
 
     // Populate of hash table of ranges of reference bi-grams 
     for (int i = 1; i < rvec.size(); i++)
@@ -231,22 +234,21 @@ void prepareRef(std::vector<unsigned char>& rtext)
         }
     }
 
-    // Set n to be alpha
-    n = alpha;
-
-    print_hash_ranges();
+    spdlog::trace("Reference at the start");
+    printRef();
+    spdlog::trace("Hash ranges of reference bi-grams at the start");
+    printHashRanges();
 }
 
 /**
- * @brief Creates max heap of the bi-gram within the sequence file via the RLZ parse
+ * @brief Creates max heap of the unique bi-grams in the sequence via the RLZ parse.
  * 
- * We directly are using Heap/Hash/Record data structures in BigRePair to create the max heap
+ * We directly are using Heap/Hash/Record data structures in RePair/BigRePair to create the max heap
  * Max heap allows us to quickly find the bi-gram with the highest occurence.
- * We will also store the range that the bi-gram spans within a separate hash table.
  * 
  * @param[in] pfile [std::infstream&] the RLZ parse file stream
  * 
- * @return void?
+ * @return void
  */
 void createMaxHeap(std::ifstream& pfile)
 {
@@ -294,13 +296,9 @@ void createMaxHeap(std::ifstream& pfile)
             }
         }
     }
-    // Print the heap in debug mode
-    print_all_records();
-
-    // Check the max freq pair from heap
-    // id = extractMax(&Heap);
-    // Trecord* orec = &Rec.records[id];
-    // print_record("Maximum freq pair", orec);
+    // Print the records in the heap
+    spdlog::trace("Records in the heap at the start");
+    printAllRecords();
 
     // Reset the file pointer to the beginning of the file
     pfile.clear();
@@ -308,7 +306,11 @@ void createMaxHeap(std::ifstream& pfile)
 }
 
 /**
- * @brief populates the phrases in RLZ parse. Range for each phrase is [left,right]
+ * @brief Populates the phrases in RLZ parse. 
+ * 
+ * Each phrase created will be a non-explicit phrase. 
+ * A non-explicit phrase stores left and right endpoints that references the reference.
+ * Range for each phrase is [left,right] 
  * 
  * @param[in] pfile [std::ifstream&] the RLZ parse filestream
  * @return void 
@@ -340,11 +342,20 @@ void populatePhrases(std::ifstream& pfile)
     pfile.seekg(0, std::ios::beg);
 
     // Debug
-    print_phrase_lst();
+    spdlog::trace("The non-explicit phrases at the start");
+    printPhraseList();
 }
 
 /**
- * @brief Process the phrase list for the phrase boundary condition
+ * @brief Process the phrase list for the phrase boundary condition.
+ * 
+ * If the rightmost elem of a non-explicit phrase and the non-explicit leftmost elem of the adjacent phrase 
+ * form the provided bi-gram, both elements are removed from their respective phrases and added together to create 
+ * an explicit phrase. If one of the phrases are explicit already, only from the non-explict phrase is the 
+ * elem removed (since the other phrase is already explicit).
+ * 
+ * @param [in] left_elem [int] the left elem of the max occuring bi-gram
+ * @param [in] right_elem [int] the right elem of the max occuring bi-gram
  * 
  * @return void
  */
@@ -430,11 +441,22 @@ void phraseBoundaries(int left_elem, int right_elem)
     }
 
     // Debug
-    print_phrase_lst();
+    spdlog::trace("Phrase list after phrase boundary condition.");
+    printPhraseList();
 }
 
 /**
- * @brief Process the phrase list for the source boundary condition
+ * @brief Process the phrase list for the source boundary condition.
+ * 
+ * If the rightmost elem of a non-explicit phrase and the next elem in the reference form the provided bi-gram
+ * or the leftmost elem of a non-explicit phrase and the previous elem in the reference form the provided bi-gram
+ * then remove the offending elem from the non-explicit phrase and create an explicit phrase.
+ * 
+ * @param [in] left_elem [int] the left elem of the max occuring bi-gram
+ * @param [in] right_elem [int] the right elem of the max occuring bi-gram
+ * 
+ * @return void
+ * 
  */
 void sourceBoundaries(int left_elem, int right_elem)
 {
@@ -521,56 +543,65 @@ void sourceBoundaries(int left_elem, int right_elem)
     }
 
     // Debug
-    print_phrase_lst();
+    spdlog::trace("Phrase list after source boundary condition.");
+    printPhraseList();
 }
 
 /**
- * @brief Decrease the frequency of a pair in the heap
+ * @brief Decrease the frequency of a pair in the heap.
+ * 
+ * @param [in] left_elem [int] the left elem of the max occuring bi-gram
+ * @param [in] right_elem [int] the right elem of the max occuring bi-gram
+ * 
+ * @return void
  */
-void DecreaseFreq(int left, int right)
+void decreaseFrequency(int left, int right)
 {
-    spdlog::debug("Decrease Frequency called");
-    spdlog::debug("left {}, right {}", left, right);
+    spdlog::trace("Decrease frequency: ({},{})", left, right);
     Tpair new_pair;
     new_pair.left = left;
     new_pair.right = right;
     int id = searchHash(Hash,new_pair);
-    spdlog::debug("ID: {}", id);
-    spdlog::debug("Prior to decrease");
-    print_all_records();
     decFreq(&Heap,id);
-    spdlog::debug("After decrease");
-    print_all_records();
 }
 
 /**
- * @brief Increase the frequency of a pair in the heap
+ * @brief Increase the frequency of a pair in the heap.
+ * 
+ * @param [in] left_elem [int] the left elem of the max occuring bi-gram
+ * @param [in] right_elem [int] the right elem of the max occuring bi-gram
+ * 
+ * @return void
  */
-void IncreaseFreq(int left, int right)
+void increaseFrequency(int left, int right)
 {
-    spdlog::debug("Increase Frequency called");
-    spdlog::debug("left {}, right {}", left, right);
+    spdlog::trace("Increase frequency: ({},{})", left, right);
     Tpair new_pair;
     new_pair.left = left;
     new_pair.right = right;
     int id = searchHash(Hash,new_pair);
-    spdlog::debug("ID: {}", id);
-    spdlog::debug("Prior to increase");
-    print_all_records();
     if (id == -1){
         id = insertRecord(&Rec,new_pair);
     }
     else{
         incFreq(&Heap,id);
     }
-    spdlog::debug("After increase");
-    print_all_records();
 }
 
-
-
 /**
- * @brief RePair
+ * @brief Runs RePair on the non-explicit and explicit phrases.
+ * 
+ * RePair replaces the most occuring bi-gram with a new non-terminal symbol (n).
+ * Before we do replacement, we have to check and correct the phrase and source boundary conditions.
+ * If there is an explicit, we have to do normal pair by pair checking.
+ * Non-explicit phrases, we can handle by looking at their ranges.
+ * We also have to keep track of the frequency as we do the replacement.
+ * 
+ * Our goal is to handle the non-explicit phrases in time O(|phrases|). 
+ * 
+ * @param [in] R [std::ofstream&] The file where we will write the rules.
+ * @param [in] C [std::ofstream&] The file where we will write the compressed text.
+ * 
  * @return void
  */
 void repair(std::ofstream& R, std::ofstream& C)
@@ -589,12 +620,10 @@ void repair(std::ofstream& R, std::ofstream& C)
     int id = extractMax(&Heap);
     while (id != -1)
     {
-        spdlog::debug("Value of n: {}", n);
         Trecord* orec = &Rec.records[id];
-        print_record("Maximum freq pair", orec);
+        printRecord("Max frequently occuring pair", orec);
         // When max frequency is 1, RePair ends.
         if (orec->freq == 1){
-            spdlog::debug("Max Frequency on Heap is 1");
             break;
         }
 
@@ -619,7 +648,6 @@ void repair(std::ofstream& R, std::ofstream& C)
             // If explicit phrase then have to traverse through its content and replaces.
             if (curr_phrase->exp)
             {
-                spdlog::debug("EXPLICIT PHRASE");
                 auto curr_elem = curr_phrase->content.begin();
                 while (curr_elem != curr_phrase->content.end()){
                     auto next_elem = std::next(curr_elem);
@@ -630,13 +658,13 @@ void repair(std::ofstream& R, std::ofstream& C)
                         if (curr_elem != curr_phrase->content.begin() && next_elem != std::prev(curr_phrase->content.end()))
                         {
                             // Decrease frequency of left pair effected by merge.
-                            DecreaseFreq(*(std::prev(curr_elem)), *(curr_elem));
+                            decreaseFrequency(*(std::prev(curr_elem)), *(curr_elem));
                             // Increase frequency of new pair.
-                            IncreaseFreq(*(std::prev(curr_elem)), n);
+                            increaseFrequency(*(std::prev(curr_elem)), n);
                             // Decrease frequency of right pair effected by merge.
-                            DecreaseFreq(*(next_elem), *(std::next(next_elem)));
+                            decreaseFrequency(*(next_elem), *(std::next(next_elem)));
                             // Increase frequency of new pair.
-                            IncreaseFreq(n, *(std::next(next_elem)));
+                            increaseFrequency(n, *(std::next(next_elem)));
                         }
                         // If both elments are at the beginning and end of the phrases, then have to look at the end of the prev and start of the next
                         else if (curr_elem == curr_phrase->content.begin() && next_elem == std::prev(curr_phrase->content.end()))
@@ -648,16 +676,16 @@ void repair(std::ofstream& R, std::ofstream& C)
                                 if (prev_phrase->exp)
                                 {
                                     // Decrease frequency of left pair effected by merge.
-                                    DecreaseFreq(prev_phrase->content.back(), *(curr_elem));
+                                    decreaseFrequency(prev_phrase->content.back(), *(curr_elem));
                                     // Increase frequency of new pair.
-                                    IncreaseFreq(prev_phrase->content.back(), n);
+                                    increaseFrequency(prev_phrase->content.back(), n);
                                 }
                                 else
                                 {
                                     // Decrease frequency of left pair effected by merge.
-                                    DecreaseFreq(final_rvec[prev_phrase->rrange], *(curr_elem));
+                                    decreaseFrequency(final_rvec[prev_phrase->rrange], *(curr_elem));
                                     // Increase frequency of new pair.
-                                    IncreaseFreq(final_rvec[prev_phrase->rrange], n);
+                                    increaseFrequency(final_rvec[prev_phrase->rrange], n);
                                 }
                             }
                             // For the right pair effected have to look at next phrase
@@ -667,15 +695,15 @@ void repair(std::ofstream& R, std::ofstream& C)
                                 if (next_phrase->exp)
                                 {
                                     // Decrease frequency of right pair effected by merge.
-                                    DecreaseFreq(*(next_elem), next_phrase->content.front());
+                                    decreaseFrequency(*(next_elem), next_phrase->content.front());
                                     // Increase frequency of new pair
-                                    IncreaseFreq(n, next_phrase->content.front());
+                                    increaseFrequency(n, next_phrase->content.front());
                                 }
                                 else{
                                     // Decrease frequency of right pair effected by merge.
-                                    DecreaseFreq(*(next_elem), rvec[next_phrase->lrange]);
+                                    decreaseFrequency(*(next_elem), rvec[next_phrase->lrange]);
                                     // Increase frequency of new pair
-                                    IncreaseFreq(n, rvec[next_phrase->lrange]);
+                                    increaseFrequency(n, rvec[next_phrase->lrange]);
                                 }
                             }
                         }
@@ -689,31 +717,31 @@ void repair(std::ofstream& R, std::ofstream& C)
                                 if (prev_phrase->exp)
                                 {
                                     // Decrease frequency of left pair effected by merge.
-                                    DecreaseFreq(prev_phrase->content.back(), *(curr_elem));
+                                    decreaseFrequency(prev_phrase->content.back(), *(curr_elem));
                                     // Increase frequency of new pair.
-                                    IncreaseFreq(prev_phrase->content.back(), n);
+                                    increaseFrequency(prev_phrase->content.back(), n);
                                 }
                                 else
                                 {
                                     // Decrease frequency of left pair effected by merge.
-                                    DecreaseFreq(final_rvec[prev_phrase->rrange], *(curr_elem));
+                                    decreaseFrequency(final_rvec[prev_phrase->rrange], *(curr_elem));
                                     // Increase frequency of new pair.
-                                    IncreaseFreq(final_rvec[prev_phrase->rrange], n);
+                                    increaseFrequency(final_rvec[prev_phrase->rrange], n);
                                 }
                             }
                             // Decrease frequency of right pair effected by merge.
-                            DecreaseFreq(*(next_elem), *(std::next(next_elem)));
+                            decreaseFrequency(*(next_elem), *(std::next(next_elem)));
                             // Increase frequency of new pair.
-                            IncreaseFreq(n, *(std::next(next_elem)));
+                            increaseFrequency(n, *(std::next(next_elem)));
 
                         }
                         // If the left elem is in the middle of the phrase and the right elem is at the end of the phrase
                         else if (curr_elem != curr_phrase->content.begin() && next_elem == std::prev(curr_phrase->content.end()))
                         {
                             // Decrease frequency of left pair effected by merge.
-                            DecreaseFreq(*(std::prev(curr_elem)), *(curr_elem));
+                            decreaseFrequency(*(std::prev(curr_elem)), *(curr_elem));
                             // Increase frequency of new pair.
-                            IncreaseFreq(*(std::prev(curr_elem)), n);
+                            increaseFrequency(*(std::prev(curr_elem)), n);
 
                         
                             // For the right pair effected have to look at next phrase
@@ -723,16 +751,16 @@ void repair(std::ofstream& R, std::ofstream& C)
                                 if (next_phrase->exp)
                                 {
                                     // Decrease frequency of right pair effected by merge.
-                                    DecreaseFreq(*(next_elem), next_phrase->content.front());
+                                    decreaseFrequency(*(next_elem), next_phrase->content.front());
                                     // Increase frequency of new pair
-                                    IncreaseFreq(n, next_phrase->content.front());
+                                    increaseFrequency(n, next_phrase->content.front());
                                 }
                                 else
                                 {
                                     // Decrease frequency of right pair effected by merge.
-                                    DecreaseFreq(*(next_elem), rvec[next_phrase->lrange]);
+                                    decreaseFrequency(*(next_elem), rvec[next_phrase->lrange]);
                                     // Increase frequency of new pair
-                                    IncreaseFreq(n, rvec[next_phrase->lrange]);
+                                    increaseFrequency(n, rvec[next_phrase->lrange]);
                                 }
                             }
                         }
@@ -751,8 +779,6 @@ void repair(std::ofstream& R, std::ofstream& C)
             // If non-explicit phrase, have to check if it exists in Ref
             else
             {
-                spdlog::debug("NOT EXPLICIT PHRASE");
-
                 // Make copy rvec which we will keep modifying in this section to maintain the correct elements to be replaced (think of how not to do this)
                 std::vector<unsigned int> copy_rvec;
 
@@ -776,27 +802,21 @@ void repair(std::ofstream& R, std::ofstream& C)
                         // Assumes that the occurances are stored in order.
                         left = left - decrement;
 
-                        spdlog::debug("Left: {}", left);
-
                         // If the two elements are not at the beginning or end of the phrase then replace happens fully within the phrase
                         if (left > curr_phrase->lrange && left + 1 < curr_phrase->rrange)
                         {
-                            spdlog::debug("Left middle, right middle");
-
                             // Decrease frequency of left pair effected by merge.
-                            DecreaseFreq(copy_rvec[left-1], copy_rvec[left]);
+                            decreaseFrequency(copy_rvec[left-1], copy_rvec[left]);
                             // Increase frequency of new pair.
-                            IncreaseFreq(copy_rvec[left-1], n);
+                            increaseFrequency(copy_rvec[left-1], n);
                             // Decrease frequency of right pair effected by merge.
-                            DecreaseFreq(copy_rvec[left+1], copy_rvec[left+2]);
+                            decreaseFrequency(copy_rvec[left+1], copy_rvec[left+2]);
                             // Increase frequency of new pair.
-                            IncreaseFreq(n, copy_rvec[left+2]);
+                            increaseFrequency(n, copy_rvec[left+2]);
                         }
                         // If both elments are at the beginning and end of the phrases, then have to look at the end of the prev and start of the next
                         else if (left == curr_phrase->lrange && left + 1 == curr_phrase->rrange)
                         {
-                            spdlog::debug("Left end, right end");
-
                             // For the left pair effected have to look at previous phrase
                             if (curr_phrase != phrase_lst.begin())
                             {
@@ -804,16 +824,16 @@ void repair(std::ofstream& R, std::ofstream& C)
                                 if (prev_phrase->exp)
                                 {
                                     // Decrease frequency of left pair effected by merge.
-                                    DecreaseFreq(prev_phrase->content.back(), copy_rvec[left]);
+                                    decreaseFrequency(prev_phrase->content.back(), copy_rvec[left]);
                                     // Increase frequency of new pair.
-                                    IncreaseFreq(prev_phrase->content.back(), n);
+                                    increaseFrequency(prev_phrase->content.back(), n);
                                 }
                                 else
                                 {
                                     // Decrease frequency of left pair effected by merge.
-                                    DecreaseFreq(final_rvec[prev_phrase->rrange], copy_rvec[left]);
+                                    decreaseFrequency(final_rvec[prev_phrase->rrange], copy_rvec[left]);
                                     // Increase frequency of new pair.
-                                    IncreaseFreq(final_rvec[prev_phrase->rrange], n);
+                                    increaseFrequency(final_rvec[prev_phrase->rrange], n);
                                 }
                             }
                             
@@ -823,23 +843,22 @@ void repair(std::ofstream& R, std::ofstream& C)
                                 auto next_phrase = std::next(curr_phrase);
                                 if (next_phrase->exp){
                                     // Decrease frequency of right pair effected by merge.
-                                    DecreaseFreq(copy_rvec[left+1], next_phrase->content.front());
+                                    decreaseFrequency(copy_rvec[left+1], next_phrase->content.front());
                                     // Increase frequency of new pair
-                                    IncreaseFreq(n, next_phrase->content.front());
+                                    increaseFrequency(n, next_phrase->content.front());
                                 }
                                 else
                                 {
                                     // Decrease frequency of right pair effected by merge.
-                                    DecreaseFreq(copy_rvec[left+1], rvec[next_phrase->lrange]);
+                                    decreaseFrequency(copy_rvec[left+1], rvec[next_phrase->lrange]);
                                     // Increase frequency of new pair
-                                    IncreaseFreq(n, rvec[next_phrase->lrange]);
+                                    increaseFrequency(n, rvec[next_phrase->lrange]);
                                 }
                             }
                         }
                         // If the left elem is at the beginning of phrase and the right elem is in middle of phrase
                         else if (left == curr_phrase->lrange && left + 1 < curr_phrase->rrange)
                         {
-                            spdlog::debug("Left end, right middle");
                             // For the left pair effected have to look at previous phrase
                             if (curr_phrase != phrase_lst.begin())
                             {
@@ -847,31 +866,30 @@ void repair(std::ofstream& R, std::ofstream& C)
                                 if (prev_phrase->exp)
                                 {
                                     // Decrease frequency of left pair effected by merge.
-                                    DecreaseFreq(prev_phrase->content.back(), copy_rvec[left]);
+                                    decreaseFrequency(prev_phrase->content.back(), copy_rvec[left]);
                                     // Increase frequency of new pair.
-                                    IncreaseFreq(prev_phrase->content.back(), n);
+                                    increaseFrequency(prev_phrase->content.back(), n);
                                 }
                                 else
                                 {
                                     // Decrease frequency of left pair effected by merge.
-                                    DecreaseFreq(final_rvec[prev_phrase->rrange], copy_rvec[left]);
+                                    decreaseFrequency(final_rvec[prev_phrase->rrange], copy_rvec[left]);
                                     // Increase frequency of new pair.
-                                    IncreaseFreq(final_rvec[prev_phrase->rrange], n);
+                                    increaseFrequency(final_rvec[prev_phrase->rrange], n);
                                 }
                             }
                             // Decrease frequency of right pair effected by merge.
-                            DecreaseFreq(copy_rvec[left+1], copy_rvec[left+2]);
+                            decreaseFrequency(copy_rvec[left+1], copy_rvec[left+2]);
                             // Increase frequency of new pair.
-                            IncreaseFreq(n, copy_rvec[left+2]);
+                            increaseFrequency(n, copy_rvec[left+2]);
                         }
                         // If the left elem is in the middle of the phrase and the right elem is at the end of the phrase
                         else if (left > curr_phrase->lrange && left + 1 == curr_phrase->rrange)
                         {
-                            spdlog::debug("Left middle, right end");
                             // Decrease frequency of left pair effected by merge.
-                            DecreaseFreq(copy_rvec[left-1], copy_rvec[left]);
+                            decreaseFrequency(copy_rvec[left-1], copy_rvec[left]);
                             // Increase frequency of new pair.
-                            IncreaseFreq(copy_rvec[left-1], n);
+                            increaseFrequency(copy_rvec[left-1], n);
                             
                             // For the right pair effected have to look at next phrase
                             if (curr_phrase != std::prev(phrase_lst.end()))
@@ -880,16 +898,16 @@ void repair(std::ofstream& R, std::ofstream& C)
                                 if (next_phrase->exp)
                                 {
                                     // Decrease frequency of right pair effected by merge.
-                                    DecreaseFreq(copy_rvec[left+1], next_phrase->content.front());
+                                    decreaseFrequency(copy_rvec[left+1], next_phrase->content.front());
                                     // Increase frequency of new pair
-                                    IncreaseFreq(n, next_phrase->content.front());
+                                    increaseFrequency(n, next_phrase->content.front());
                                 }
                                 else
                                 {
                                     // Decrease frequency of right pair effected by merge.
-                                    DecreaseFreq(copy_rvec[left+1], rvec[next_phrase->lrange]);
+                                    decreaseFrequency(copy_rvec[left+1], rvec[next_phrase->lrange]);
                                     // Increase frequency of new pair
-                                    IncreaseFreq(n, rvec[next_phrase->lrange]);
+                                    increaseFrequency(n, rvec[next_phrase->lrange]);
                                 }
                             }
                         }
@@ -897,24 +915,15 @@ void repair(std::ofstream& R, std::ofstream& C)
                         // How to change non explicit phrase depending on bi-gram replaced
                         if (left >= curr_phrase->lrange && left + 1 <= curr_phrase->rrange)
                         {
-                            spdlog::debug("In-between");
-                            spdlog::debug("lrange: {}, rrange: {}", curr_phrase->lrange, curr_phrase->rrange);
                             curr_phrase->rrange = curr_phrase->rrange - 1;
-                            spdlog::debug("updated lrange: {}, rrange: {}", curr_phrase->lrange, curr_phrase->rrange);
                         }
                         else if (left < curr_phrase->lrange)
                         {
-                            spdlog::debug("Smaller than lrange");
-                            spdlog::debug("lrange: {}, rrange: {}", curr_phrase->lrange, curr_phrase->rrange);
                             curr_phrase->lrange = curr_phrase->lrange - 1;
                             curr_phrase->rrange = curr_phrase->rrange - 1;
-                            spdlog::debug("updated lrange: {}, rrange: {}", curr_phrase->lrange, curr_phrase->rrange);
                         }
                         else if (left > curr_phrase->rrange)
                         {
-                            spdlog::debug("Greater than rrange");
-                            spdlog::debug("lrange: {}, rrange: {}", curr_phrase->lrange, curr_phrase->rrange);
-                            spdlog::debug("updated lrange: {}, rrange: {}", curr_phrase->lrange, curr_phrase->rrange);
                             continue;
                         }
 
@@ -969,27 +978,27 @@ void repair(std::ofstream& R, std::ofstream& C)
         n++;
 
         // Debug
-        print_ref();
-        print_phrase_lst();
-        print_all_records();
-        spdlog::debug("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+        spdlog::trace("Information after bi-gram replacement");
+        printRef();
+        printPhraseList();
+        printAllRecords();
     }
 
     // Write the final integers to the C file
     for(Phrase phrase : phrase_lst){
         if (!(phrase.exp)){
             for(int i = phrase.lrange; i <= phrase.rrange; i++){
+                c++;
                 C.write(reinterpret_cast<const char*>(&rvec[i]), sizeof(unsigned int));
             }
         }
         else{
             for (unsigned int i : phrase.content){
+                c++;
                 C.write(reinterpret_cast<const char*>(&i), sizeof(unsigned int));
             }
         }
     }
-
-    spdlog::debug("END OF REPAIR");
 } 
 
 int main(int argc, char *argv[])
@@ -997,22 +1006,33 @@ int main(int argc, char *argv[])
     CLI::App app("rlz - Run RePair with the RLZ parse.\n\nImplemented by Rahul Varki");
     std::string ref_file;
     std::string rlz_parse;
-    bool verbose = false;
+    int verbosity = 0;
     std::string version = "Version: 1.0.0";
 
     app.add_option("-r,--ref", ref_file, "The reference file used to create the RLZ parse")->configurable()->required();
     app.add_option("-p,--parse", rlz_parse, "The RLZ parse of the sequence file (.rlz)")->configurable()->required();
-    app.add_flag("--verbose", verbose, "Verbose output")->configurable();
-    app.set_version_flag("-v,--version", version);
+    app.add_option("-v,--verbosity", verbosity, "Set verbosity level (0 = none, 1 = basic, 2 = detailed)")->default_val(0);
+    app.set_version_flag("--version", version);
     app.footer("Example usage:\n"
            "  Compress: ./repair --ref reference.fasta --parse sequence.rlz\n");
     app.description("Run RePair on RLZ parse");
     CLI11_PARSE(app, argc, argv);
-    if (verbose) { spdlog::set_level(spdlog::level::debug); }
 
-    spdlog::info("Starting to RePair the RLZ parse");
-    spdlog::info("The reference file provided: {}", ref_file);
-    spdlog::info("The RLZ parse file provided: {}", rlz_parse);
+    if (verbosity == 2) {
+        spdlog::set_level(spdlog::level::trace);
+    }
+    else if (verbosity == 1){
+        spdlog::set_level(spdlog::level::debug);
+    }
+    else if (verbosity == 0){ 
+        spdlog::set_level(spdlog::level::info);
+    }
+    else{
+        spdlog::error("Set verbosity level to be 0,1,2");
+    }
+
+    spdlog::debug("The reference file provided: {}", ref_file);
+    spdlog::debug("The RLZ parse file provided: {}", rlz_parse);
 
     // Opening Ref file 
     std::ifstream rfile(ref_file, std::ios::binary | std::ios::in);
@@ -1057,13 +1077,12 @@ int main(int argc, char *argv[])
     // Process Ref
     prepareRef(rtext);
 
-    // Clear rtext
+    // Clear char representation of Ref
     rtext.clear();
     rtext.shrink_to_fit();
 
     // Calculate the size of the original sequence file using the len field of the pairs
-    psize = calculate_parse_bytes(pfile);
-    spdlog::debug("The parse encodes for {} bytes", psize);
+    psize = calculateParseBytes(pfile);
 
     // Call populatePhrases function
     populatePhrases(pfile);
@@ -1078,5 +1097,12 @@ int main(int argc, char *argv[])
     C.close();
     rfile.close();
     pfile.close();
+
+    // Statistics
+    spdlog::info("File Statistics");
+    spdlog::info("Parse Encoded Chars: {}", psize);
+    spdlog::info("Number of Rules: {}", n - alpha);
+    spdlog::info("Final sequence length: {}", c);
+
     return 0;
 }

@@ -36,9 +36,7 @@ def runRLZ(args):
 
 def runRePair(args):
     command = ""
-    command += repair_exe + " " + "-r " + args.ref + " " + "-p " + args.seq + ".rlz" + " "
-    if (args.verbose):
-        command += "--verbose "
+    command += repair_exe + " " + "-r " + args.ref + " " + "-p " + args.seq + ".rlz" + " " + "-v " + str(args.verbosity)
     
     execute_command(command)
 
@@ -49,7 +47,8 @@ def main():
     parser.add_argument('-a', '--alphabet', help = "Do the RLZ compression at character level", action='store_true')
     parser.add_argument('-t', '--threads', help = "Number of threads", type = int, default = 1)
     parser.add_argument('-d', '--decompress', help= "Decompress into the original file", action='store_true')
-    parser.add_argument('-v', '--verbose', help= "Verbose output", action='store_true')
+    parser.add_argument('-v', '--verbosity', help='Set verbosity level (0 = none, 1 = basic, 2 = detailed)', type=int, choices=[0, 1, 2], default=0)
+    parser.add_argument('--verbose', help= "Verbose output", action='store_true') # Add verbosity to RLZ and remove later
     parser.add_argument('--log-file', help="Log filename prefix.", type = str)
     args = parser.parse_args()
     print("############ STARTING RUNNING RLZ ############")
