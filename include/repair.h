@@ -14,8 +14,10 @@ extern "C" {
 }
 
 uint64_t calculateParseBytes(std::ifstream& pfile);
+std::string printSymbol(int elem);
 void printAllRecords();
 void printRecord(const std::string message, const Trecord* orec);
+void printMaxPair(int new_symbol, const Trecord* orec);
 void printRef();
 void printPhraseList();
 void printHashRanges();

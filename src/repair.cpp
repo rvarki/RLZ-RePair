@@ -72,6 +72,20 @@ uint64_t calculateParseBytes(std::ifstream& pfile)
 }
 
 /**
+ * @brief Converts int to char if possible
+ * 
+ * @param[in] elem [int] an int element.
+ * @return string of char or int 
+ */
+std::string printSymbol(int elem)
+{
+    if (elem < alpha)
+        return std::string(1, static_cast<char>(map[elem]));
+    else
+        return std::to_string(elem);
+}
+
+/**
  * @brief Prints all records in the max heap. Debug purposes only.
  * @return void
  */
@@ -81,7 +95,7 @@ void printAllRecords()
     spdlog::trace("Current records in the heap");
     for (int i = 0; i < Rec.size; i++)
     {
-        spdlog::trace("({},{}) {} occs", Rec.records[i].pair.left, Rec.records[i].pair.right, Rec.records[i].freq);
+        spdlog::trace("({},{}) {} occs", printSymbol(Rec.records[i].pair.left), printSymbol(Rec.records[i].pair.right), Rec.records[i].freq);
     }
     spdlog::trace("");
 }
@@ -99,8 +113,21 @@ void printAllRecords()
 void printRecord(const std::string message, const Trecord* orec)
 {
     spdlog::debug("{}",message);
-    spdlog::debug("({},{}) {} occs", (unsigned int) orec->pair.left, (unsigned int) orec->pair.right, orec->freq);
+    spdlog::debug("({},{}) {} occs", printSymbol(orec->pair.left), printSymbol(orec->pair.right), orec->freq);
     spdlog::debug("");
+}
+
+
+/**
+ * @brief Print max occuring pair. Debug purposes only.
+ * 
+ * @param[in] new_symbol [int] the new non-terminal symbol to be added.
+ * @param[in] orec [Trecord*] the record content to be printed.
+ */
+
+void printMaxPair(int new_symbol, const Trecord* orec)
+{
+    spdlog::debug("Chosen Pair {} = ({},{}) ({} occs)", new_symbol, printSymbol(orec->pair.left), printSymbol(orec->pair.right), orec->freq); 
 }
 
 /**
@@ -113,7 +140,7 @@ void printRef()
     
     // Use range-based for loop for clarity
     for (int symbol : rvec) {
-        oss << symbol << " ";  
+        oss << printSymbol(symbol) << " ";  
     }
 
     spdlog::trace("Reference string (in numeric form): {}", oss.str());
@@ -149,20 +176,19 @@ void printPhraseList()
     for(Phrase phrase : phrase_lst){
         content = "";
         if (!(phrase.exp)){
-            content += "Phrase (Not explicit): ";
             for(int i = phrase.lrange; i <= phrase.rrange; i++){
-                content += std::to_string(rvec[i]);
+                content += printSymbol(rvec[i]);
                 content += " ";
             }
+            spdlog::trace("Phrase (Not explicit): {}", content);
         }
         else{
-            content += "Phrase (explicit): ";
             for (unsigned int i : phrase.content){
-                content += std::to_string(i);
+                content += printSymbol(i);
                 content += " ";
             }
+            spdlog::trace("Phrase (explicit): \033[1;31m{}\033[0m", content);
         }
-        spdlog::trace("{}", content);
     }
     spdlog::trace("");
 }
@@ -557,7 +583,7 @@ void sourceBoundaries(int left_elem, int right_elem)
  */
 void decreaseFrequency(int left, int right)
 {
-    spdlog::trace("Decrease frequency: ({},{})", left, right);
+    spdlog::trace("Decrease frequency: ({},{})", printSymbol(left), printSymbol(right));
     Tpair new_pair;
     new_pair.left = left;
     new_pair.right = right;
@@ -575,7 +601,7 @@ void decreaseFrequency(int left, int right)
  */
 void increaseFrequency(int left, int right)
 {
-    spdlog::trace("Increase frequency: ({},{})", left, right);
+    spdlog::trace("Increase frequency: ({},{})", printSymbol(left), printSymbol(right));
     Tpair new_pair;
     new_pair.left = left;
     new_pair.right = right;
@@ -621,11 +647,12 @@ void repair(std::ofstream& R, std::ofstream& C)
     while (id != -1)
     {
         Trecord* orec = &Rec.records[id];
-        printRecord("Max frequently occuring pair", orec);
         // When max frequency is 1, RePair ends.
         if (orec->freq == 1){
             break;
         }
+
+        printMaxPair(n, orec);
 
         // Write pair to R file 
         R.write(reinterpret_cast<const char*>(&(orec->pair)), sizeof(Tpair));
