@@ -91,7 +91,7 @@ if (NOT RLZ)
     FetchContent_Declare(
             rlz
             GIT_REPOSITORY "https://github.com/rvarki/RLZ.git"
-            GIT_TAG forward_match
+            GIT_TAG main
     )
     FetchContent_GetProperties(rlz)
     if (NOT rlz_POPULATED)
