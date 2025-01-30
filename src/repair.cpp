@@ -9,6 +9,7 @@
 #include <list>
 #include "repair.h"
 #include "phrase.h"
+#include "IntervalTree.h"
 
 extern "C" {
     #include "heap.h"
@@ -42,6 +43,10 @@ std::unordered_map<std::string, std::vector<int>> hash_ranges;
 
 // List of explicit and non explicit phrases
 std::list<Phrase> phrase_lst;
+
+// Interval Tree for the non-explicit phrases
+typedef IntervalTree<int, Phrase*> ITree;
+ITree phrase_tree;
 
 /**
  * @brief Calculates the number of bytes encoded in the RLZ parse.
@@ -143,7 +148,7 @@ void printRef()
         oss << printSymbol(symbol) << " ";  
     }
 
-    spdlog::trace("Reference string (in numeric form): {}", oss.str());
+    spdlog::trace("Reference string: {}", oss.str());
     spdlog::trace("");
 }
 
@@ -370,6 +375,31 @@ void populatePhrases(std::ifstream& pfile)
     // Debug
     spdlog::trace("The non-explicit phrases at the start");
     printPhraseList();
+}
+
+/**
+ * @brief Builds interval tree from the non-explicit phrases.
+ */
+
+void buildIntervalTree()
+{
+    ITree::interval_vector phrase_intervals;
+    for (Phrase phrase : phrase_lst) 
+    {
+        if (!phrase.exp){
+            spdlog::info("Left: {}, Right: {}", phrase.lrange, phrase.rrange);
+            phrase_intervals.push_back(ITree::interval(phrase.lrange, phrase.rrange, &phrase));
+        }
+    }
+    
+    ITree temp_tree(std::move(phrase_intervals));
+    phrase_tree = temp_tree;
+
+    // Some debug test
+    // ITree::interval_vector phrase_results;
+    // phrase_results = phrase_tree.findContained(0,4);
+    // spdlog::info("Results of finding (0,4): {}", phrase_results.size());
+    
 }
 
 /**
@@ -652,6 +682,7 @@ void repair(std::ofstream& R, std::ofstream& C)
             break;
         }
 
+        //buildIntervalTree();
         printMaxPair(n, orec);
 
         // Write pair to R file 
