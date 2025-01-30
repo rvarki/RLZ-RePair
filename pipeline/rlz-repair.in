@@ -26,19 +26,15 @@ def execute_command(command):
 
 def runRLZ(args):
     command = ""
-    command += rlz_exe + " " + "-r " + args.ref + " " + "-s " + args.seq + " " + "-t " + str(args.threads) + " "
-    if (args.alphabet):
-        command += "--alphabet "
-    if (args.verbose):
-        command += "--verbose "
+    command += rlz_exe + " " + "-r " + args.ref + " " + "-s " + args.seq + " " + "-t " + str(args.threads) + " " + "-v " + str(args.verbosity)
+    if (args.bit):
+        command += "--bit "
     
     execute_command(command)
 
 def runRePair(args):
     command = ""
-    command += repair_exe + " " + "-r " + args.ref + " " + "-p " + args.seq + ".rlz" + " "
-    if (args.verbose):
-        command += "--verbose "
+    command += repair_exe + " " + "-r " + args.ref + " " + "-p " + args.seq + ".rlz" + " " + "-v " + str(args.verbosity)
     
     execute_command(command)
 
@@ -46,10 +42,10 @@ def main():
     parser = argparse.ArgumentParser(description=Description, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('-r', '--ref', help = "The reference file to be used for compression", type = str, required = True)
     parser.add_argument('-s', '--seq', help = "The sequence file to compress", type = str, required = True)
-    parser.add_argument('-a', '--alphabet', help = "Do the RLZ compression at character level", action='store_true')
+    parser.add_argument('-b', '--bit', help = "Do the RLZ compression at bit level", action='store_true')
     parser.add_argument('-t', '--threads', help = "Number of threads", type = int, default = 1)
     parser.add_argument('-d', '--decompress', help= "Decompress into the original file", action='store_true')
-    parser.add_argument('-v', '--verbose', help= "Verbose output", action='store_true')
+    parser.add_argument('-v', '--verbosity', help='Set verbosity level (0 = none, 1 = basic, 2 = detailed)', type=int, choices=[0, 1, 2], default=0)
     parser.add_argument('--log-file', help="Log filename prefix.", type = str)
     args = parser.parse_args()
     print("############ STARTING RUNNING RLZ ############")

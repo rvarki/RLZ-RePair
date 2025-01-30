@@ -106,7 +106,8 @@ endif()
 
 # RePair
 add_executable(repair 
-               ${PROJECT_SRC_DIR}/repair.cpp 
+               ${PROJECT_SRC_DIR}/repair.cpp
+               ${PROJECT_SRC_DIR}/phrase.cpp  
                ${PROJECT_SRC_DIR}/repair/heap.c
                ${PROJECT_SRC_DIR}/repair/array.c
                ${PROJECT_SRC_DIR}/repair/basics.c

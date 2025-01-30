@@ -13,10 +13,22 @@ extern "C" {
     #include "hash.h"
 }
 
-uint64_t calculate_parse_bytes(std::ifstream& pfile);
-void print_all_records();
-void print_record(std::string message, Trecord* orec);
-void repair(const std::string ref_str, std::ifstream& pfile);
+uint64_t calculateParseBytes(std::ifstream& pfile);
+std::string printSymbol(int elem);
+void printAllRecords();
+void printRecord(const std::string message, const Trecord* orec);
+void printMaxPair(int new_symbol, const Trecord* orec);
+void printRef();
+void printPhraseList();
+void printHashRanges();
+void prepareRef(std::vector<unsigned char>& rtext);
+void createMaxHeap(std::ifstream& pfile);
+void populatePhrases(std::ifstream& pfile);
+void repair(std::ofstream& R, std::ofstream& C);
+void phraseBoundaries(int left_elem, int right_elem);
+void sourceBoundaries(int left_elem, int right_elem);
+void decreaseFrequency(int left_elem, int right_elem);
+void increaseFrequency(int left_elem, int right_elem);
 
 
 #endif  // REPAIR_H
