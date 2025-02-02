@@ -1,6 +1,6 @@
 #ifndef NODE_H
 #define NODE_H
-#include <string>
+#include <list>
 
 class RefNode
 {
@@ -15,14 +15,17 @@ class RefNode
 class PhraseNode
 {
     public: 
-        std::string content;
+        std::list<unsigned int> content;
+        bool exp;
         RefNode* lnode;
         RefNode* rnode;
         PhraseNode* prev;
         PhraseNode* next;
+        int lrange;
+        int rrange;
 
-        PhraseNode(RefNode* lrange, RefNode* rrange) : content(""), lnode(lrange), rnode(rrange), prev(nullptr), next(nullptr) {}
-        PhraseNode(std::string value) : content(value), lnode(nullptr), rnode(nullptr), prev(nullptr), next(nullptr) {}
+        PhraseNode(RefNode* lnode, RefNode* rnode, int lrange, int rrange) : content({}), exp(false), lnode(lnode), rnode(rnode), lrange(lrange), rrange(rrange), prev(nullptr), next(nullptr) {}
+        PhraseNode(std::list<unsigned int> ilist) : content(ilist), exp(true), lnode(nullptr), rnode(nullptr), lrange(-1), rrange(-1), prev(nullptr), next(nullptr) {}
 };
 
 
