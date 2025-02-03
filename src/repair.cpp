@@ -165,13 +165,17 @@ void printMaxPair(int new_symbol, const Trecord* orec)
 void printRef()
 {
     std::string ref = "";
-    
-    // Use range-based for loop for clarity
+
     RefNode* curr_ref = rlist.getTail();
     while(curr_ref != nullptr)
     {
+        curr_ref = rlist.findNearestRef(curr_ref);
+        if (curr_ref == nullptr){
+            break;
+        }
+
         ref = printSymbol(curr_ref->val) + " " + ref;
-        curr_ref = curr_ref->prev;
+        curr_ref = curr_ref->prev;    
     }
 
     spdlog::trace("Reference string: {}", ref);
@@ -761,8 +765,8 @@ void repair(std::ofstream& R, std::ofstream& C)
                         leftleftElem = lref->prev->val;
                         rightrightElem = rlist.findForwardRef(rref)->val;
                         decreaseFrequency(leftleftElem, leftElem);
-                        decreaseFrequency(rightElem, rightrightElem);
                         increaseFrequency(leftleftElem, n);
+                        decreaseFrequency(rightElem, rightrightElem);
                         increaseFrequency(n, rightrightElem);
 
                     }
@@ -779,6 +783,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                             leftleftElem = rlist.findNearestRef(nexp_phrase->prev->rnode)->val;
                             decreaseFrequency(leftleftElem, leftElem);
                         }
+
                         nexp_phrase->rightReplaced = true;
                         if (nexp_phrase->next->exp){
                             rightrightElem = nexp_phrase->next->content.front();
@@ -802,6 +807,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                             leftleftElem = rlist.findNearestRef(nexp_phrase->prev->rnode)->val;
                             decreaseFrequency(leftleftElem, leftElem);
                         }
+
                         rightrightElem = rlist.findForwardRef(rref)->val;
                         decreaseFrequency(rightElem, rightrightElem);
                         increaseFrequency(n, rightrightElem);
@@ -813,6 +819,8 @@ void repair(std::ofstream& R, std::ofstream& C)
                         leftleftElem = lref->prev->val;
                         decreaseFrequency(leftleftElem, leftElem);
                         increaseFrequency(leftleftElem, n);
+
+                        nexp_phrase->rightReplaced = true;
                         if (nexp_phrase->next->exp){
                             rightrightElem = nexp_phrase->next->content.front();
                             decreaseFrequency(rightElem, rightrightElem);
