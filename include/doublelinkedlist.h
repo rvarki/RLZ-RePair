@@ -49,8 +49,8 @@ class RefLinkedList
         {
             left->val = val;
             right->deleted = true;
-            right->prev = left;
-            if (!right->next){
+            right->prev = left;   
+            if (right->next != nullptr){
                 right->next->prev = left;
             }
         }
