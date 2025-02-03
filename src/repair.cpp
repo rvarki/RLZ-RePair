@@ -8,7 +8,8 @@
 #include <unordered_map>
 #include <list>
 #include <functional>
-#include <utility> 
+#include <utility>
+#include <stack> 
 #include "repair.h"
 #include "phrase.h"
 #include "IntervalTree.h"
@@ -486,23 +487,33 @@ void phraseBoundaries(int left_elem, int right_elem)
         // If there is a next phrase, check the phrase boundaries.
         if (next_phrase != nullptr)
         {
+            // Update the rnode and lnode of both the current and next phrase before doing anything.
+            if (!curr_phrase->exp){
+                curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
+                curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode);
+            }
+            if (!next_phrase->exp){
+                next_phrase->lnode = rlist.findNearestRef(next_phrase->lnode);
+                next_phrase->rnode = rlist.findNearestRef(next_phrase->rnode);
+            }
+            
             // Both phrases not explicit
             if (!(curr_phrase->exp) && !(next_phrase->exp))
             {
-                if ((rlist.findNearestRef(curr_phrase->rnode)->val == left_elem) && (rlist.findNearestRef(next_phrase->lnode)->val == right_elem))
+                if (curr_phrase->rnode->val == left_elem && next_phrase->lnode->val == right_elem)
                 {
                     std::list<unsigned int> content;
                     content.push_back(left_elem);
                     content.push_back(right_elem);
-                    curr_phrase->rnode = curr_phrase->rnode->prev;
+                    curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode->prev);
                     next_phrase->lnode = rlist.findForwardRef(next_phrase->lnode);
                     plist.insert(next_phrase, content); 
                     // If the current or next phrases are empty we delete
-                    if (curr_phrase->rnode->pos < curr_phrase->lnode->pos){ 
+                    if (curr_phrase->rnode == nullptr || curr_phrase->lnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){ 
                         curr_phrase = plist.remove(curr_phrase);
                     }
-                    if (next_phrase->lnode->pos > next_phrase->rnode->pos){
-                        next_phrase = plist.remove(next_phrase);   
+                    if (next_phrase->rnode == nullptr || next_phrase->lnode == nullptr || next_phrase->lnode->pos > next_phrase->rnode->pos){
+                        next_phrase = plist.remove(next_phrase);  
                     }
                     continue;
                 }
@@ -510,12 +521,12 @@ void phraseBoundaries(int left_elem, int right_elem)
             // Current phrase not explicit and next phrase explicit
             else if (!(curr_phrase->exp) && (next_phrase->exp))
             {
-                if ((rlist.findNearestRef(curr_phrase->rnode)->val == left_elem) && (next_phrase->content.front() == right_elem))
+                if ((curr_phrase->rnode->val == left_elem) && (next_phrase->content.front() == right_elem))
                 {
                     next_phrase->content.push_front(left_elem);
-                    curr_phrase->rnode = curr_phrase->rnode->prev;
+                    curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode->prev);
                     // If the non-explicit phrase is empty we delete it.
-                    if (curr_phrase->rnode->pos < curr_phrase->lnode->pos){ 
+                    if (curr_phrase->rnode == nullptr || curr_phrase->lnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){ 
                         curr_phrase = plist.remove(curr_phrase);
                     }
                     continue;
@@ -524,11 +535,11 @@ void phraseBoundaries(int left_elem, int right_elem)
             // Current phrase explicit and next phrase not explicit
             else if ((curr_phrase->exp) && !(next_phrase->exp))
             {
-                if ((curr_phrase->content.back() == left_elem) && (rlist.findNearestRef(next_phrase->lnode)->val == right_elem))
+                if ((curr_phrase->content.back() == left_elem) && (next_phrase->lnode->val == right_elem))
                 {
                     curr_phrase->content.push_back(right_elem);
                     next_phrase->lnode = rlist.findForwardRef(next_phrase->lnode);
-                    if (next_phrase->lnode->pos > next_phrase->rnode->pos){
+                    if (next_phrase->rnode == nullptr || next_phrase->lnode == nullptr || next_phrase->lnode->pos > next_phrase->rnode->pos){
                         next_phrase = plist.remove(next_phrase);
                     }
                     continue;
@@ -568,7 +579,6 @@ void phraseBoundaries(int left_elem, int right_elem)
  */
 void sourceBoundaries(int left_elem, int right_elem)
 {
-    int currPhrase = 1;
     PhraseNode* curr_phrase = plist.getHead();
     // Iterate through the phrases in the phrase list
     while (curr_phrase != nullptr) 
@@ -576,12 +586,12 @@ void sourceBoundaries(int left_elem, int right_elem)
         // Check if the curr phrase is explicit or not
         if (!(curr_phrase->exp))
         {
-            // Check if the current phrase with its leftmost elem can form bi-gram with next elem on reference
+            // Check if the current phrase with its leftmost elem can form bi-gram with prev elem on reference
             RefNode* rightElem = rlist.findNearestRef(curr_phrase->lnode);
-            RefNode* leftElem = rightElem->prev;
+            RefNode* leftElem = rlist.findNearestRef(rightElem->prev);
 
             // If the bi-gram can be formed then make the leftmost element make an explicit phrase of its own
-            if (leftElem != nullptr && leftElem->val == left_elem && rightElem->val == right_elem){
+            if (leftElem != nullptr && rightElem != nullptr && leftElem->val == left_elem && rightElem->val == right_elem){
                 PhraseNode* prev_phrase = curr_phrase->prev;
                 // If the previous phrase is explicit, we can add directly to it.
                 if (prev_phrase != nullptr && prev_phrase->exp){
@@ -596,17 +606,18 @@ void sourceBoundaries(int left_elem, int right_elem)
                 
                 curr_phrase->lnode = rlist.findForwardRef(curr_phrase->lnode);                    
                 // If non-explicit phrase is empty we delete it
-                if (curr_phrase->lnode->pos > curr_phrase->rnode->pos){ 
+                if (curr_phrase->lnode == nullptr || curr_phrase->lnode->pos > curr_phrase->rnode->pos){ 
                     curr_phrase = plist.remove(curr_phrase);
                     continue;
                 }
             }
             
+            // Check if the current phrase with its rightmost elem can form bi-gram with right elem on reference
             leftElem = rlist.findNearestRef(curr_phrase->rnode);
             rightElem = rlist.findForwardRef(leftElem);
             
             // If the bi-gram can be formed then make the rightmost element make an explicit phrase of its own
-            if (rightElem != nullptr && leftElem->val == left_elem && rightElem->val == right_elem){
+            if (leftElem != nullptr && rightElem != nullptr && leftElem->val == left_elem && rightElem->val == right_elem){
                 PhraseNode* next_phrase = curr_phrase->next;                    
                 // If the next phrase is explicit, we can add directly to it.
                 if (next_phrase != nullptr && next_phrase->exp){
@@ -624,9 +635,9 @@ void sourceBoundaries(int left_elem, int right_elem)
                     }
                 }
 
-                curr_phrase->rnode = curr_phrase->rnode->prev;                       
+                curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode->prev);                       
                 // If non-explicit phrase is empty we delete it
-                if (curr_phrase->rnode->pos < curr_phrase->lnode->pos){ 
+                if (curr_phrase->rnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){ 
                     curr_phrase = plist.remove(curr_phrase);
                     continue;
                 }
@@ -752,7 +763,6 @@ void repair(std::ofstream& R, std::ofstream& C)
                 phrase_results = phrase_tree.findContained(lref->pos,rref->pos); // Fully contained within interval
                 for (int i = 0; i < phrase_results.size(); i++)
                 {
-                    spdlog::trace("Phrase: ({},{})", phrase_results[i].start, phrase_results[i].stop);
                     PhraseNode* nexp_phrase = phrase_results[i].value;
                     int leftElem =  lref->val;
                     int rightElem = rref->val;
@@ -761,8 +771,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                     // If range fully contained within range then we can do the decrease and increase frequencies
                     if (phrase_results[i].start != lref->pos && phrase_results[i].stop != rref->pos)
                     {
-                        printPhrase(nexp_phrase);
-                        leftleftElem = lref->prev->val;
+                        leftleftElem = rlist.findNearestRef(lref->prev)->val;
                         rightrightElem = rlist.findForwardRef(rref)->val;
                         decreaseFrequency(leftleftElem, leftElem);
                         increaseFrequency(leftleftElem, n);
@@ -773,7 +782,6 @@ void repair(std::ofstream& R, std::ofstream& C)
                     // If range touches the edges, we can only do the decrease frequency at the moment.
                     else if (phrase_results[i].start == lref->pos && phrase_results[i].stop == rref->pos)
                     {
-                        printPhrase(nexp_phrase);
                         nexp_phrase->leftReplaced = true;
                         if (nexp_phrase->prev->exp){
                             leftleftElem = nexp_phrase->prev->content.back();
@@ -797,7 +805,6 @@ void repair(std::ofstream& R, std::ofstream& C)
                     // If range touches left edge, we can only decrease the left pair at the moment.
                     else if (phrase_results[i].start == lref->pos &&  phrase_results[i].stop != rref->pos)
                     {
-                        printPhrase(nexp_phrase);
                         nexp_phrase->leftReplaced = true;
                         if (nexp_phrase->prev->exp){
                             leftleftElem = nexp_phrase->prev->content.back();
@@ -815,8 +822,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                     // If range touches right edge, we can only decrease right pair at the moment.
                     else if (phrase_results[i].start != lref->pos &&  phrase_results[i].stop == rref->pos)
                     {
-                        printPhrase(nexp_phrase);
-                        leftleftElem = lref->prev->val;
+                        leftleftElem = rlist.findNearestRef(lref->prev)->val;
                         decreaseFrequency(leftleftElem, leftElem);
                         increaseFrequency(leftleftElem, n);
 
@@ -837,9 +843,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                 rlist.replacePair(n, lref, rref);
             }
         }
-        printAllRecords();
-        // Have to reset leftReplaced and rightReplaced when iterating through explicit phrases
-       
+        
         // Have to process the explicit phrases and little bit of the non explicit phrases
         PhraseNode* curr_phrase = plist.getHead();
         while(curr_phrase != nullptr)
@@ -998,12 +1002,12 @@ void repair(std::ofstream& R, std::ofstream& C)
                     } 
                     else{
                         // Adjust for non explicit phrases
-                        if (curr_phrase->prev->rightReplaced && curr_elem == curr_phrase->content.begin())
+                        if (curr_phrase != plist.getHead() && curr_phrase->prev->rightReplaced && curr_elem == curr_phrase->content.begin())
                         {
                             increaseFrequency(n, *(curr_elem));
                             curr_phrase->prev->rightReplaced = false;
                         }
-                        if (curr_phrase->next->leftReplaced && curr_elem == std::prev(curr_phrase->content.end()))
+                        if (curr_phrase != plist.getTail() && curr_phrase->next->leftReplaced && curr_elem == std::prev(curr_phrase->content.end()))
                         {
                             increaseFrequency(*(curr_elem), n);
                             curr_phrase->next->leftReplaced = false;
@@ -1027,78 +1031,71 @@ void repair(std::ofstream& R, std::ofstream& C)
             }
             curr_phrase = curr_phrase->next;
         }
-        break;
+
+        // Think of better way. But going to clear and then repopulate due to laziness
+        // We will go in reverse since prev pointers are updated. We store left pointer of pair so do not want the end.
+        hash_ranges.clear();
+        RefNode* end_elem = rlist.findNearestRef(rlist.getTail());
+        RefNode* begin_elem = rlist.findNearestRef(rlist.getHead());
+        std::pair<int,int> hash_pair;
+        hash_pair.second = end_elem->val;
+
+        while (end_elem != begin_elem)
+        {
+            end_elem = rlist.findNearestRef(end_elem->prev);
+            hash_pair.first = end_elem->val;
+            hash_ranges[hash_pair].emplace_back(end_elem->pos);
+            hash_pair.second = hash_pair.first;
+        }
+
+        // Remove old record
+        removeRecord(&Rec,id);
+
+        // Get next value in max heap
+        id = extractMax(&Heap);
+
+        // Update n
+        n++;
+
+        // Debug
+        spdlog::trace("");
+        spdlog::trace("*** Information after bi-gram replacement ***");
+        printRef();
+        printPhraseList();
+        printAllRecords();
+        spdlog::trace("*********************************************");
     }
-    printRef();
-    printAllRecords();
-    printPhraseList();
+
+    // Write the final integers to the C file
+    PhraseNode* curr_phrase = plist.getHead();
+    while(curr_phrase != nullptr)
+    {
+        if (!(curr_phrase->exp)){
+            // Go backwards via the prev pointers but write in forward direction
+            std::stack<int> nexp_stack;
+            RefNode* end_elem = rlist.findNearestRef(curr_phrase->rnode);
+            RefNode* first_elem = rlist.findNearestRef(rlist.findNearestRef(curr_phrase->lnode)->prev);
+            while(end_elem != first_elem){
+                nexp_stack.push(end_elem->val);
+                end_elem = rlist.findNearestRef(end_elem->prev);
+            }
+            while (!nexp_stack.empty()) {
+                c++;
+                unsigned int i = nexp_stack.top();
+                C.write(reinterpret_cast<const char*>(&i), sizeof(unsigned int));
+                nexp_stack.pop();
+            }
+        }
+        else{
+            for (unsigned int i : curr_phrase->content){
+                c++;
+                C.write(reinterpret_cast<const char*>(&i), sizeof(unsigned int));
+            }
+        }
+        curr_phrase = curr_phrase->next;
+    }
 }
 
-
-
-
-//         // Update Ref vector
-//         if (hash_ranges.find(pair_key) != hash_ranges.end()){
-//             int decrement = 0;
-//             for (int left : hash_ranges[pair_key]){
-//                 rvec[left - decrement] = n;
-//                 rvec.erase(rvec.begin() + left - decrement + 1);
-//                 decrement++;
-//             }
-//         }
-
-//         // Update hash ranges (keys and values)
-
-//         // Think of better way. But going to clear and then repopulate due to laziness
-//         hash_ranges.clear();
-//         // Populate of hash table of ranges of reference bi-grams 
-//         for (int i = 1; i < rvec.size(); i++)
-//         {
-//             std::string pair_key = std::to_string(rvec[i-1]) + "-" + std::to_string(rvec[i]);
-//             int lrange = i - 1;
-//             auto it = hash_ranges.find(pair_key);
-//             if (it == hash_ranges.end())
-//                 hash_ranges[pair_key].emplace_back(lrange);
-//             else{
-//                 auto itv = std::find((it->second).begin(), (it->second).end(), lrange);
-//                 if (itv == (it->second).end()){
-//                     hash_ranges[pair_key].emplace_back(lrange);
-//                 }
-//             }
-//         }
-
-//         // Remove old record
-//         removeRecord(&Rec,id);
-
-//         // Get next value in max heap
-//         id = extractMax(&Heap);
-
-//         // Update n
-//         n++;
-
-//         // Debug
-//         spdlog::trace("Information after bi-gram replacement");
-//         printRef();
-//         printPhraseList();
-//         printAllRecords();
-//     }
-
-//     // Write the final integers to the C file
-//     for(Phrase phrase : phrase_lst){
-//         if (!(phrase.exp)){
-//             for(int i = phrase.lrange; i <= phrase.rrange; i++){
-//                 c++;
-//                 C.write(reinterpret_cast<const char*>(&rvec[i]), sizeof(unsigned int));
-//             }
-//         }
-//         else{
-//             for (unsigned int i : phrase.content){
-//                 c++;
-//                 C.write(reinterpret_cast<const char*>(&i), sizeof(unsigned int));
-//             }
-//         }
-//     }
-// } 
 
 int main(int argc, char *argv[])
 {

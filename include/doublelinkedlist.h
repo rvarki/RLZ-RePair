@@ -73,6 +73,9 @@ class RefLinkedList
         // then find the new ref endpoint
         RefNode* findNearestRef(RefNode* endpoint) 
         {
+            if (endpoint == nullptr){
+                return nullptr;
+            }
             if (!(endpoint->deleted))
                 return endpoint;
             else{
