@@ -747,12 +747,16 @@ void repair(std::ofstream& R, std::ofstream& C)
         if (hash_ranges.find(std::pair<int,int>{left_elem,right_elem}) != hash_ranges.end())
         {
             std::vector<int> ranges = hash_ranges[std::pair<int,int>(left_elem,right_elem)];
-            int prev_range = -1;
+            bool firstRange = true;
+            int prev_range;
             buildIntervalTree(); 
             for (int curr_range : ranges)
             {
-                // First check if this range exists after a replacement
-                if (curr_range - prev_range == 1){
+                if (firstRange){
+                    prev_range = curr_range;
+                    firstRange = false;
+                }
+                else if (curr_range - prev_range == 1){
                     continue;
                 }  
                 // Replace in Ref
@@ -761,6 +765,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                 ITree::interval_vector phrase_results;
                 spdlog::trace("Pair to replace: ({},{})", lref->pos, rref->pos);
                 phrase_results = phrase_tree.findContained(lref->pos,rref->pos); // Fully contained within interval
+                spdlog::trace("{} non-explicit phrases contain the pair to replace.", phrase_results.size());
                 for (int i = 0; i < phrase_results.size(); i++)
                 {
                     PhraseNode* nexp_phrase = phrase_results[i].value;
@@ -783,21 +788,21 @@ void repair(std::ofstream& R, std::ofstream& C)
                     else if (phrase_results[i].start == lref->pos && phrase_results[i].stop == rref->pos)
                     {
                         nexp_phrase->leftReplaced = true;
-                        if (nexp_phrase->prev->exp){
+                        if (nexp_phrase->prev != nullptr && nexp_phrase->prev->exp){
                             leftleftElem = nexp_phrase->prev->content.back();
                             decreaseFrequency(leftleftElem, leftElem);
                         } 
-                        else if (!nexp_phrase->prev->rightReplaced) {
+                        else if (nexp_phrase->prev != nullptr && !nexp_phrase->prev->rightReplaced) {
                             leftleftElem = rlist.findNearestRef(nexp_phrase->prev->rnode)->val;
                             decreaseFrequency(leftleftElem, leftElem);
                         }
 
                         nexp_phrase->rightReplaced = true;
-                        if (nexp_phrase->next->exp){
+                        if (nexp_phrase->next != nullptr && nexp_phrase->next->exp){
                             rightrightElem = nexp_phrase->next->content.front();
                             decreaseFrequency(rightElem, rightrightElem);
                         } 
-                        else if (!nexp_phrase->next->leftReplaced) {
+                        else if (nexp_phrase->next != nullptr && !nexp_phrase->next->leftReplaced) {
                             rightrightElem = rlist.findNearestRef(nexp_phrase->next->lnode)->val;
                             decreaseFrequency(rightElem, rightrightElem);
                         }
@@ -806,11 +811,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                     else if (phrase_results[i].start == lref->pos &&  phrase_results[i].stop != rref->pos)
                     {
                         nexp_phrase->leftReplaced = true;
-                        if (nexp_phrase->prev->exp){
+                        if (nexp_phrase->prev != nullptr && nexp_phrase->prev->exp){
                             leftleftElem = nexp_phrase->prev->content.back();
                             decreaseFrequency(leftleftElem, leftElem);
                         } 
-                        else if (!nexp_phrase->prev->rightReplaced) {
+                        else if (nexp_phrase->prev != nullptr && !nexp_phrase->prev->rightReplaced) {
                             leftleftElem = rlist.findNearestRef(nexp_phrase->prev->rnode)->val;
                             decreaseFrequency(leftleftElem, leftElem);
                         }
@@ -827,11 +832,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                         increaseFrequency(leftleftElem, n);
 
                         nexp_phrase->rightReplaced = true;
-                        if (nexp_phrase->next->exp){
+                        if (nexp_phrase->next != nullptr && nexp_phrase->next->exp){
                             rightrightElem = nexp_phrase->next->content.front();
                             decreaseFrequency(rightElem, rightrightElem);
                         } 
-                        else if (!nexp_phrase->next->leftReplaced) {
+                        else if (nexp_phrase->next != nullptr && !nexp_phrase->next->leftReplaced) {
                             rightrightElem = rlist.findNearestRef(nexp_phrase->next->lnode)->val;
                             decreaseFrequency(rightElem, rightrightElem);
                         }
@@ -841,6 +846,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                     }
                 }
                 rlist.replacePair(n, lref, rref);
+                prev_range = curr_range;
             }
         }
         
@@ -968,9 +974,9 @@ void repair(std::ofstream& R, std::ofstream& C)
 
                         
                             // For the right pair effected have to look at next phrase
-                            if (curr_phrase != plist.getHead())
+                            if (curr_phrase != plist.getTail())
                             {
-                                PhraseNode* next_phrase = std::next(curr_phrase);
+                                PhraseNode* next_phrase = curr_phrase->next;
                                 if (next_phrase->exp)
                                 {
                                     // Decrease frequency of right pair effected by merge.
