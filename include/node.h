@@ -6,10 +6,11 @@ class RefNode
 {
     public:
         int val;
+        int pos;
         bool deleted;
         RefNode* prev;
         RefNode* next;
-        RefNode(int value) : val(value), deleted(false), prev(nullptr), next(nullptr) {}
+        RefNode(int value) : val(value), pos(0), deleted(false), prev(nullptr), next(nullptr) {}
 };
 
 class PhraseNode
@@ -17,15 +18,15 @@ class PhraseNode
     public: 
         std::list<unsigned int> content;
         bool exp;
+        bool leftReplaced;
+        bool rightReplaced;
         RefNode* lnode;
         RefNode* rnode;
         PhraseNode* prev;
         PhraseNode* next;
-        int lrange;
-        int rrange;
 
-        PhraseNode(RefNode* lnode, RefNode* rnode, int lrange, int rrange) : content({}), exp(false), lnode(lnode), rnode(rnode), lrange(lrange), rrange(rrange), prev(nullptr), next(nullptr) {}
-        PhraseNode(std::list<unsigned int> ilist) : content(ilist), exp(true), lnode(nullptr), rnode(nullptr), lrange(-1), rrange(-1), prev(nullptr), next(nullptr) {}
+        PhraseNode(RefNode* lnode, RefNode* rnode) : content({}), exp(false), leftReplaced(false), rightReplaced(false), lnode(lnode), rnode(rnode), prev(nullptr), next(nullptr) {}
+        PhraseNode(std::list<unsigned int> ilist) : content(ilist), exp(true), leftReplaced(false), rightReplaced(false), lnode(nullptr), rnode(nullptr), prev(nullptr), next(nullptr) {}
 };
 
 

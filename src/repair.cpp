@@ -39,7 +39,6 @@ int c = 0; // The number of chars encoded in .C file
 
 // Stores the int version of the reference.
 RefLinkedList rlist;
-std::vector<RefNode*> rvec;
 
 // Boost hash function
 template <typename T>
@@ -66,7 +65,7 @@ std::unordered_map<std::pair<int, int>, std::vector<int>, pair_int_hash> hash_ra
 PhraseLinkedList plist;
 
 // Interval Tree for the non-explicit phrases
-typedef IntervalTree<int, Phrase*> ITree;
+typedef IntervalTree<int, PhraseNode*> ITree;
 ITree phrase_tree;
 
 /**
@@ -118,11 +117,14 @@ std::string printSymbol(int elem)
 
 void printAllRecords()
 {
+    int total = 0;
     spdlog::trace("Current records in the heap");
     for (int i = 0; i < Rec.size; i++)
     {
+        total += Rec.records[i].freq;
         spdlog::trace("({},{}) {} occs", printSymbol(Rec.records[i].pair.left), printSymbol(Rec.records[i].pair.right), Rec.records[i].freq);
     }
+    spdlog::trace("Total: {}", total);
     spdlog::trace("");
 }
 
@@ -195,6 +197,34 @@ void printHashRanges()
 }
 
 /**
+ * @brief Prints specific phrase
+ */
+
+void printPhrase(PhraseNode* curr_phrase)
+{
+    std::string content = "";
+    if (!(curr_phrase->exp)){
+        RefNode* curr_elem = rlist.findNearestRef(curr_phrase->rnode);
+        RefNode* first_elem = rlist.findNearestRef(curr_phrase->lnode);
+        first_elem = first_elem->prev;
+        while(curr_elem != first_elem){
+            if (!(curr_elem->deleted))
+                content = " " + printSymbol(curr_elem->val) + content;
+            curr_elem = curr_elem->prev;
+        }
+
+        spdlog::trace("Phrase (Not explicit): {}", content);
+    }
+    else{
+        for (unsigned int i : curr_phrase->content){
+            content += printSymbol(i) + " ";
+        }
+        spdlog::trace("Phrase (explicit): \033[1;31m{}\033[0m", content);
+    }
+}
+
+
+/**
  * @brief Prints the current phrases. Debug purposes only.
  * @return void
  */
@@ -207,20 +237,9 @@ void printPhraseList()
     {
         content = "";
         if (!(curr_phrase->exp)){
-            RefNode* curr_elem = curr_phrase->rnode;
-            if (curr_elem->deleted){
-                while(curr_elem->deleted){
-                    curr_elem = curr_elem->prev;
-                }
-            }
-            RefNode* first_elem = curr_phrase->lnode;
-            if (first_elem->deleted){
-                while(first_elem->deleted){
-                    first_elem = curr_elem->prev;
-                }
-            }
+            RefNode* curr_elem = rlist.findNearestRef(curr_phrase->rnode);
+            RefNode* first_elem = rlist.findNearestRef(curr_phrase->lnode);
             first_elem = first_elem->prev;
-            
             while(curr_elem != first_elem){
                 if (!(curr_elem->deleted))
                     content = " " + printSymbol(curr_elem->val) + content;
@@ -275,7 +294,6 @@ void prepareRef(std::vector<unsigned char>& rtext)
             chars[x] = alpha++;
         }
         curr_elem = rlist.push_back(chars[x]);
-        rvec.push_back(curr_elem);
         ref_pair.second = curr_elem->val;
         if (i != 0){
             hash_ranges[ref_pair].emplace_back(i-1);
@@ -293,8 +311,9 @@ void prepareRef(std::vector<unsigned char>& rtext)
     // Set n to be alpha
     n = alpha;
 
-    // spdlog::trace("Reference at the start");
-    // printRef();
+    spdlog::trace("Reference at the start");
+    spdlog::trace("Size: {}", rlist.getSize());
+    printRef();
     spdlog::trace("Hash ranges of reference bi-grams at the start");
     printHashRanges();
 }
@@ -320,6 +339,7 @@ void createMaxHeap(std::ifstream& pfile)
     uint64_t num_pairs, pos, len;
     pair.left = -1;
     pair.right = -1;
+    RefNode* rnode;
     int id;
 
     // First uint64_t bytes tell how many (pos,len) pairs are stored in the parse file
@@ -336,11 +356,15 @@ void createMaxHeap(std::ifstream& pfile)
             pfile.read(reinterpret_cast<char*>(&len), sizeof(uint64_t));
             for (uint64_t j = 0; j < len; j++)
             {
+                if (j == 0){
+                    rnode = rlist.findPos(pos);
+                }
                 if (pair.left == -1){
-                    pair.left = rvec[pos]->val;
+                    pair.left = rnode->val;
+                    rnode = rnode->next;
                 }
                 else{
-                    pair.right = rvec[pos + j]->val;
+                    pair.right = rnode->val;
                     id = searchHash(Hash, pair);
                     if (id == -1) // new pair, insert
                     {
@@ -351,6 +375,7 @@ void createMaxHeap(std::ifstream& pfile)
                         incFreq(&Heap, id);
                     }
                     pair.left = pair.right;
+                    rnode = rnode->next;
                 }
             }
         }
@@ -391,7 +416,7 @@ void populatePhrases(std::ifstream& pfile)
         else
         {
             pfile.read(reinterpret_cast<char*>(&len), sizeof(uint64_t));
-            plist.push_back(rvec[pos], rvec[pos+len-1], pos, pos+len-1);
+            plist.push_back(rlist.findPos(pos), rlist.findPos(pos+len-1));
         }
     }
 
@@ -408,26 +433,29 @@ void populatePhrases(std::ifstream& pfile)
  * @brief Builds interval tree from the non-explicit phrases.
  */
 
-// void buildIntervalTree()
-// {
-//     ITree::interval_vector phrase_intervals;
-//     for (Phrase phrase : phrase_lst) 
-//     {
-//         if (!phrase.exp){
-//             spdlog::info("Left: {}, Right: {}", phrase.lrange, phrase.rrange);
-//             phrase_intervals.push_back(ITree::interval(phrase.lrange, phrase.rrange, &phrase));
-//         }
-//     }
+void buildIntervalTree()
+{
+    ITree::interval_vector phrase_intervals;
+    PhraseNode* curr_phrase = plist.getHead();
+    while(curr_phrase != nullptr)
+    {
+        if (!curr_phrase->exp){
+            phrase_intervals.push_back(ITree::interval(rlist.findNearestRef(curr_phrase->lnode)->pos, 
+                                                        rlist.findNearestRef(curr_phrase->rnode)->pos, 
+                                                        curr_phrase));
+        }
+        curr_phrase = curr_phrase->next;
+    }
     
-//     ITree temp_tree(std::move(phrase_intervals));
-//     phrase_tree = temp_tree;
+    ITree temp_tree(std::move(phrase_intervals));
+    phrase_tree = temp_tree;
 
-//     // Some debug test
-//     // ITree::interval_vector phrase_results;
-//     // phrase_results = phrase_tree.findContained(0,4);
-//     // spdlog::info("Results of finding (0,4): {}", phrase_results.size());
+    // Some debug test
+    // ITree::interval_vector phrase_results;
+    // phrase_results = phrase_tree.findContained(0,4);
+    // spdlog::info("Results of finding (0,4): {}", phrase_results.size());
     
-// }
+}
 
 /**
  * @brief Process the phrase list for the phrase boundary condition.
@@ -462,16 +490,14 @@ void phraseBoundaries(int left_elem, int right_elem)
                     std::list<unsigned int> content;
                     content.push_back(left_elem);
                     content.push_back(right_elem);
-                    curr_phrase->rrange = curr_phrase->rrange - 1;
                     curr_phrase->rnode = curr_phrase->rnode->prev;
-                    next_phrase->lrange = next_phrase->lrange + 1;
                     next_phrase->lnode = rlist.findForwardRef(next_phrase->lnode);
                     plist.insert(next_phrase, content); 
                     // If the current or next phrases are empty we delete
-                    if (curr_phrase->rrange < curr_phrase->lrange){ 
+                    if (curr_phrase->rnode->pos < curr_phrase->lnode->pos){ 
                         curr_phrase = plist.remove(curr_phrase);
                     }
-                    if (next_phrase->lrange > next_phrase->rrange){
+                    if (next_phrase->lnode->pos > next_phrase->rnode->pos){
                         next_phrase = plist.remove(next_phrase);   
                     }
                     continue;
@@ -483,10 +509,9 @@ void phraseBoundaries(int left_elem, int right_elem)
                 if ((rlist.findNearestRef(curr_phrase->rnode)->val == left_elem) && (next_phrase->content.front() == right_elem))
                 {
                     next_phrase->content.push_front(left_elem);
-                    curr_phrase->rrange = curr_phrase->rrange - 1;
                     curr_phrase->rnode = curr_phrase->rnode->prev;
                     // If the non-explicit phrase is empty we delete it.
-                    if (curr_phrase->rrange < curr_phrase->lrange){ 
+                    if (curr_phrase->rnode->pos < curr_phrase->lnode->pos){ 
                         curr_phrase = plist.remove(curr_phrase);
                     }
                     continue;
@@ -498,9 +523,8 @@ void phraseBoundaries(int left_elem, int right_elem)
                 if ((curr_phrase->content.back() == left_elem) && (rlist.findNearestRef(next_phrase->lnode)->val == right_elem))
                 {
                     curr_phrase->content.push_back(right_elem);
-                    next_phrase->lrange = next_phrase->lrange + 1;
                     next_phrase->lnode = rlist.findForwardRef(next_phrase->lnode);
-                    if (next_phrase->lrange > next_phrase->rrange){
+                    if (next_phrase->lnode->pos > next_phrase->rnode->pos){
                         next_phrase = plist.remove(next_phrase);
                     }
                     continue;
@@ -566,10 +590,9 @@ void sourceBoundaries(int left_elem, int right_elem)
                     plist.insert(curr_phrase, content);
                 }
                 
-                curr_phrase->lnode = rlist.findForwardRef(curr_phrase->lnode);
-                curr_phrase->lrange = curr_phrase->lrange + 1;                       
+                curr_phrase->lnode = rlist.findForwardRef(curr_phrase->lnode);                    
                 // If non-explicit phrase is empty we delete it
-                if (curr_phrase->lrange > curr_phrase->rrange){ 
+                if (curr_phrase->lnode->pos > curr_phrase->rnode->pos){ 
                     curr_phrase = plist.remove(curr_phrase);
                     continue;
                 }
@@ -598,9 +621,8 @@ void sourceBoundaries(int left_elem, int right_elem)
                 }
 
                 curr_phrase->rnode = curr_phrase->rnode->prev;                       
-                curr_phrase->rrange = curr_phrase->rrange - 1;
                 // If non-explicit phrase is empty we delete it
-                if (curr_phrase->rrange < curr_phrase->lrange){ 
+                if (curr_phrase->rnode->pos < curr_phrase->lnode->pos){ 
                     curr_phrase = plist.remove(curr_phrase);
                     continue;
                 }
@@ -692,7 +714,6 @@ void repair(std::ofstream& R, std::ofstream& C)
             break;
         }
 
-        //buildIntervalTree();
         printMaxPair(n, orec);
 
         // Write pair to R file 
@@ -703,314 +724,310 @@ void repair(std::ofstream& R, std::ofstream& C)
 
         int left_elem = orec->pair.left;
         int right_elem = orec->pair.right;
-        std::string pair_key = std::to_string(left_elem) + "-" + std::to_string(right_elem);
-        printRef();
+        
         phraseBoundaries(left_elem, right_elem);
-        printRef();
         sourceBoundaries(left_elem, right_elem);
-        // Have to delete the next 3 lines to get repair to work
+        
+        // Check if the current max pair is in hash ranges, if is then have to go through non-explicit phrases.
+        if (hash_ranges.find(std::pair<int,int>{left_elem,right_elem}) != hash_ranges.end())
+        {
+            std::vector<int> ranges = hash_ranges[std::pair<int,int>(left_elem,right_elem)];
+            int prev_range = -1;
+            buildIntervalTree(); 
+            for (int curr_range : ranges)
+            {
+                // First check if this range exists after a replacement
+                if (curr_range - prev_range == 1){
+                    continue;
+                }  
+                // Replace in Ref
+                RefNode* lref = rlist.findPos(curr_range);
+                RefNode* rref = rlist.findForwardRef(lref);
+                ITree::interval_vector phrase_results;
+                spdlog::trace("Pair to replace: ({},{})", lref->pos, rref->pos);
+                phrase_results = phrase_tree.findContained(lref->pos,rref->pos); // Fully contained within interval
+                for (int i = 0; i < phrase_results.size(); i++)
+                {
+                    spdlog::trace("Phrase: ({},{})", phrase_results[i].start, phrase_results[i].stop);
+                    PhraseNode* nexp_phrase = phrase_results[i].value;
+                    int leftElem =  lref->val;
+                    int rightElem = rref->val;
+                    int leftleftElem;
+                    int rightrightElem;
+                    // If range fully contained within range then we can do the decrease and increase frequencies
+                    if (phrase_results[i].start != lref->pos && phrase_results[i].stop != rref->pos)
+                    {
+                        printPhrase(nexp_phrase);
+                        leftleftElem = lref->prev->val;
+                        rightrightElem = rlist.findForwardRef(rref)->val;
+                        decreaseFrequency(leftleftElem, leftElem);
+                        decreaseFrequency(rightElem, rightrightElem);
+                        increaseFrequency(leftleftElem, n);
+                        increaseFrequency(n, rightrightElem);
+
+                    }
+                    // If range touches the edges, we can only do the decrease frequency at the moment.
+                    else if (phrase_results[i].start == lref->pos && phrase_results[i].stop == rref->pos)
+                    {
+                        printPhrase(nexp_phrase);
+                        nexp_phrase->leftReplaced = true;
+                        if (nexp_phrase->prev->exp){
+                            leftleftElem = nexp_phrase->prev->content.back();
+                            decreaseFrequency(leftleftElem, leftElem);
+                        } 
+                        else if (!nexp_phrase->prev->rightReplaced) {
+                            leftleftElem = rlist.findNearestRef(nexp_phrase->prev->rnode)->val;
+                            decreaseFrequency(leftleftElem, leftElem);
+                        }
+                        nexp_phrase->rightReplaced = true;
+                        if (nexp_phrase->next->exp){
+                            rightrightElem = nexp_phrase->next->content.front();
+                            decreaseFrequency(rightElem, rightrightElem);
+                        } 
+                        else if (!nexp_phrase->next->leftReplaced) {
+                            rightrightElem = rlist.findNearestRef(nexp_phrase->next->lnode)->val;
+                            decreaseFrequency(rightElem, rightrightElem);
+                        }
+                    }
+                    // If range touches left edge, we can only decrease the left pair at the moment.
+                    else if (phrase_results[i].start == lref->pos &&  phrase_results[i].stop != rref->pos)
+                    {
+                        printPhrase(nexp_phrase);
+                        nexp_phrase->leftReplaced = true;
+                        if (nexp_phrase->prev->exp){
+                            leftleftElem = nexp_phrase->prev->content.back();
+                            decreaseFrequency(leftleftElem, leftElem);
+                        } 
+                        else if (!nexp_phrase->prev->rightReplaced) {
+                            leftleftElem = rlist.findNearestRef(nexp_phrase->prev->rnode)->val;
+                            decreaseFrequency(leftleftElem, leftElem);
+                        }
+                        rightrightElem = rlist.findForwardRef(rref)->val;
+                        decreaseFrequency(rightElem, rightrightElem);
+                        increaseFrequency(n, rightrightElem);
+                    }
+                    // If range touches right edge, we can only decrease right pair at the moment.
+                    else if (phrase_results[i].start != lref->pos &&  phrase_results[i].stop == rref->pos)
+                    {
+                        printPhrase(nexp_phrase);
+                        leftleftElem = lref->prev->val;
+                        decreaseFrequency(leftleftElem, leftElem);
+                        increaseFrequency(leftleftElem, n);
+                        if (nexp_phrase->next->exp){
+                            rightrightElem = nexp_phrase->next->content.front();
+                            decreaseFrequency(rightElem, rightrightElem);
+                        } 
+                        else if (!nexp_phrase->next->leftReplaced) {
+                            rightrightElem = rlist.findNearestRef(nexp_phrase->next->lnode)->val;
+                            decreaseFrequency(rightElem, rightrightElem);
+                        }
+                    }
+                    else{
+                        spdlog::error("Should not logically happen!");
+                    }
+                }
+                rlist.replacePair(n, lref, rref);
+            }
+        }
+        printAllRecords();
+        // Have to reset leftReplaced and rightReplaced when iterating through explicit phrases
+       
+        // Have to process the explicit phrases and little bit of the non explicit phrases
+        PhraseNode* curr_phrase = plist.getHead();
+        while(curr_phrase != nullptr)
+        {
+            if (curr_phrase->exp)
+            {
+                auto curr_elem = curr_phrase->content.begin();
+                while (curr_elem != curr_phrase->content.end())
+                {
+                    auto next_elem = std::next(curr_elem);
+                    if (next_elem != curr_phrase->content.end() && (*curr_elem == left_elem && *next_elem == right_elem))
+                    {
+                        // Have to change the frequencies in max heap.
+                        // If the two elements are not at the beginning or end of the phrase then replace happens fully within the phrase
+                        if (curr_elem != curr_phrase->content.begin() && next_elem != std::prev(curr_phrase->content.end()))
+                        {
+                            // Decrease frequency of left pair effected by merge.
+                            decreaseFrequency(*(std::prev(curr_elem)), *(curr_elem));
+                            // Increase frequency of new pair.
+                            increaseFrequency(*(std::prev(curr_elem)), n);
+                            // Decrease frequency of right pair effected by merge.
+                            decreaseFrequency(*(next_elem), *(std::next(next_elem)));
+                            // Increase frequency of new pair.
+                            increaseFrequency(n, *(std::next(next_elem)));
+                        }
+                        // If both elments are at the beginning and end of the phrases, then have to look at the end of the prev and start of the next
+                        else if (curr_elem == curr_phrase->content.begin() && next_elem == std::prev(curr_phrase->content.end()))
+                        {
+                            // For the left pair effected have to look at previous phrase
+                            if (curr_phrase != plist.getHead())
+                            {
+                                PhraseNode* prev_phrase = curr_phrase->prev;
+                                if (prev_phrase->exp)
+                                {
+                                    // Decrease frequency of left pair effected by merge.
+                                    decreaseFrequency(prev_phrase->content.back(), *(curr_elem));
+                                    // Increase frequency of new pair.
+                                    increaseFrequency(prev_phrase->content.back(), n);
+                                }
+                                else
+                                {
+                                    int leftleftElem = rlist.findNearestRef(prev_phrase->rnode)->val;
+                                    if (prev_phrase->rightReplaced){
+                                        increaseFrequency(leftleftElem, n);
+                                        prev_phrase->rightReplaced = false;
+                                    }
+                                    else{
+                                        // Decrease frequency of left pair effected by merge.
+                                        decreaseFrequency(leftleftElem, *(curr_elem));
+                                        // Increase frequency of new pair.
+                                        increaseFrequency(leftleftElem, n);
+                                    }
+                                }
+                            }
+                            // For the right pair effected have to look at next phrase
+                            if (curr_phrase != plist.getTail())
+                            {
+                                PhraseNode* next_phrase = curr_phrase->next;
+                                if (next_phrase->exp)
+                                {
+                                    // Decrease frequency of right pair effected by merge.
+                                    decreaseFrequency(*(next_elem), next_phrase->content.front());
+                                    // Increase frequency of new pair
+                                    increaseFrequency(n, next_phrase->content.front());
+                                }
+                                else{
+                                    int rightrightElem = rlist.findNearestRef(next_phrase->lnode)->val;
+                                    if (next_phrase->leftReplaced){
+                                        increaseFrequency(n, rightrightElem);
+                                        next_phrase->leftReplaced = false;
+                                    }
+                                    else{
+                                        // Decrease frequency of right pair effected by merge.
+                                        decreaseFrequency(*(next_elem), rightrightElem);
+                                        // Increase frequency of new pair
+                                        increaseFrequency(n, rightrightElem);
+                                    }
+                                }
+                            }
+                        }
+                        // If the left elem is at the beginning of phrase and the right elem is in middle of phrase
+                        else if (curr_elem == curr_phrase->content.begin() && next_elem != std::prev(curr_phrase->content.end()))
+                        {
+                            // For the left pair effected have to look at previous phrase
+                            if (curr_phrase != plist.getHead())
+                            {
+                                PhraseNode* prev_phrase = curr_phrase->prev;
+                                if (prev_phrase->exp)
+                                {
+                                    // Decrease frequency of left pair effected by merge.
+                                    decreaseFrequency(prev_phrase->content.back(), *(curr_elem));
+                                    // Increase frequency of new pair.
+                                    increaseFrequency(prev_phrase->content.back(), n);
+                                }
+                                else
+                                {
+                                    int leftleftElem = rlist.findNearestRef(prev_phrase->rnode)->val;
+                                    if (prev_phrase->rightReplaced){
+                                        increaseFrequency(leftleftElem, n);
+                                        prev_phrase->rightReplaced = false;
+                                    }
+                                    else{
+                                        // Decrease frequency of left pair effected by merge.
+                                        decreaseFrequency(leftleftElem, *(curr_elem));
+                                        // Increase frequency of new pair.
+                                        increaseFrequency(leftleftElem, n);
+                                    }
+                                }
+                            }
+                            // Decrease frequency of right pair effected by merge.
+                            decreaseFrequency(*(next_elem), *(std::next(next_elem)));
+                            // Increase frequency of new pair.
+                            increaseFrequency(n, *(std::next(next_elem)));
+                        }
+                        // If the left elem is in the middle of the phrase and the right elem is at the end of the phrase
+                        else if (curr_elem != curr_phrase->content.begin() && next_elem == std::prev(curr_phrase->content.end()))
+                        {
+                            // Decrease frequency of left pair effected by merge.
+                            decreaseFrequency(*(std::prev(curr_elem)), *(curr_elem));
+                            // Increase frequency of new pair.
+                            increaseFrequency(*(std::prev(curr_elem)), n);
+
+                        
+                            // For the right pair effected have to look at next phrase
+                            if (curr_phrase != plist.getHead())
+                            {
+                                PhraseNode* next_phrase = std::next(curr_phrase);
+                                if (next_phrase->exp)
+                                {
+                                    // Decrease frequency of right pair effected by merge.
+                                    decreaseFrequency(*(next_elem), next_phrase->content.front());
+                                    // Increase frequency of new pair
+                                    increaseFrequency(n, next_phrase->content.front());
+                                }
+                                else
+                                {
+                                    int rightrightElem = rlist.findNearestRef(next_phrase->lnode)->val;
+                                    if (next_phrase->leftReplaced){
+                                        increaseFrequency(n, rightrightElem);
+                                        next_phrase->leftReplaced = false;
+                                    }
+                                    else{
+                                        // Decrease frequency of right pair effected by merge.
+                                        decreaseFrequency(*(next_elem), rightrightElem);
+                                        // Increase frequency of new pair
+                                        increaseFrequency(n, rightrightElem);
+                                    }
+                                }
+                            }
+                        } 
+                        // Delete twice for both elements in the bi-gram
+                        curr_elem = curr_phrase->content.erase(curr_elem);
+                        curr_elem = curr_phrase->content.erase(curr_elem);
+                        // Replace with n
+                        curr_phrase->content.insert(curr_elem, n);
+                    } 
+                    else{
+                        // Adjust for non explicit phrases
+                        if (curr_phrase->prev->rightReplaced && curr_elem == curr_phrase->content.begin())
+                        {
+                            increaseFrequency(n, *(curr_elem));
+                            curr_phrase->prev->rightReplaced = false;
+                        }
+                        if (curr_phrase->next->leftReplaced && curr_elem == std::prev(curr_phrase->content.end()))
+                        {
+                            increaseFrequency(*(curr_elem), n);
+                            curr_phrase->next->leftReplaced = false;
+                        }
+                        curr_elem = std::next(curr_elem);
+                    }
+                }
+            }
+            else
+            {
+                if (curr_phrase != plist.getHead() && curr_phrase->prev->rightReplaced)
+                {
+                    increaseFrequency(n, rlist.findNearestRef(curr_phrase->lnode)->val);
+                    curr_phrase->prev->rightReplaced = false;
+                }
+                if (curr_phrase != plist.getTail() && curr_phrase->next->leftReplaced)
+                {
+                    increaseFrequency(rlist.findNearestRef(curr_phrase->rnode)->val, n);
+                    curr_phrase->next->leftReplaced = false;
+                }
+            }
+            curr_phrase = curr_phrase->next;
+        }
         break;
     }
+    printRef();
+    printAllRecords();
+    printPhraseList();
 }
 
-//         // Final rvec for this loop (needed for pair replacement when we look at left non-explicit phrase since we have already modified it)
-//         std::vector<unsigned int> final_rvec = rvec;
 
-//         // Loop through the phrases
-//         for (auto curr_phrase = phrase_lst.begin(); curr_phrase != phrase_lst.end(); curr_phrase++) 
-//         {  
-//             // If explicit phrase then have to traverse through its content and replaces.
-//             if (curr_phrase->exp)
-//             {
-//                 auto curr_elem = curr_phrase->content.begin();
-//                 while (curr_elem != curr_phrase->content.end()){
-//                     auto next_elem = std::next(curr_elem);
-//                     if (next_elem != curr_phrase->content.end() && (*curr_elem == left_elem && *next_elem == right_elem))
-//                     {
-//                         // Have to change the frequencies in max heap.
-//                         // If the two elements are not at the beginning or end of the phrase then replace happens fully within the phrase
-//                         if (curr_elem != curr_phrase->content.begin() && next_elem != std::prev(curr_phrase->content.end()))
-//                         {
-//                             // Decrease frequency of left pair effected by merge.
-//                             decreaseFrequency(*(std::prev(curr_elem)), *(curr_elem));
-//                             // Increase frequency of new pair.
-//                             increaseFrequency(*(std::prev(curr_elem)), n);
-//                             // Decrease frequency of right pair effected by merge.
-//                             decreaseFrequency(*(next_elem), *(std::next(next_elem)));
-//                             // Increase frequency of new pair.
-//                             increaseFrequency(n, *(std::next(next_elem)));
-//                         }
-//                         // If both elments are at the beginning and end of the phrases, then have to look at the end of the prev and start of the next
-//                         else if (curr_elem == curr_phrase->content.begin() && next_elem == std::prev(curr_phrase->content.end()))
-//                         {
-//                             // For the left pair effected have to look at previous phrase
-//                             if (curr_phrase != phrase_lst.begin())
-//                             {
-//                                 auto prev_phrase = std::prev(curr_phrase);
-//                                 if (prev_phrase->exp)
-//                                 {
-//                                     // Decrease frequency of left pair effected by merge.
-//                                     decreaseFrequency(prev_phrase->content.back(), *(curr_elem));
-//                                     // Increase frequency of new pair.
-//                                     increaseFrequency(prev_phrase->content.back(), n);
-//                                 }
-//                                 else
-//                                 {
-//                                     // Decrease frequency of left pair effected by merge.
-//                                     decreaseFrequency(final_rvec[prev_phrase->rrange], *(curr_elem));
-//                                     // Increase frequency of new pair.
-//                                     increaseFrequency(final_rvec[prev_phrase->rrange], n);
-//                                 }
-//                             }
-//                             // For the right pair effected have to look at next phrase
-//                             if (curr_phrase != std::prev(phrase_lst.end()))
-//                             {
-//                                 auto next_phrase = std::next(curr_phrase);
-//                                 if (next_phrase->exp)
-//                                 {
-//                                     // Decrease frequency of right pair effected by merge.
-//                                     decreaseFrequency(*(next_elem), next_phrase->content.front());
-//                                     // Increase frequency of new pair
-//                                     increaseFrequency(n, next_phrase->content.front());
-//                                 }
-//                                 else{
-//                                     // Decrease frequency of right pair effected by merge.
-//                                     decreaseFrequency(*(next_elem), rvec[next_phrase->lrange]);
-//                                     // Increase frequency of new pair
-//                                     increaseFrequency(n, rvec[next_phrase->lrange]);
-//                                 }
-//                             }
-//                         }
-//                         // If the left elem is at the beginning of phrase and the right elem is in middle of phrase
-//                         else if (curr_elem == curr_phrase->content.begin() && next_elem != std::prev(curr_phrase->content.end()))
-//                         {
-//                             // For the left pair effected have to look at previous phrase
-//                             if (curr_phrase != phrase_lst.begin())
-//                             {
-//                                 auto prev_phrase = std::prev(curr_phrase);
-//                                 if (prev_phrase->exp)
-//                                 {
-//                                     // Decrease frequency of left pair effected by merge.
-//                                     decreaseFrequency(prev_phrase->content.back(), *(curr_elem));
-//                                     // Increase frequency of new pair.
-//                                     increaseFrequency(prev_phrase->content.back(), n);
-//                                 }
-//                                 else
-//                                 {
-//                                     // Decrease frequency of left pair effected by merge.
-//                                     decreaseFrequency(final_rvec[prev_phrase->rrange], *(curr_elem));
-//                                     // Increase frequency of new pair.
-//                                     increaseFrequency(final_rvec[prev_phrase->rrange], n);
-//                                 }
-//                             }
-//                             // Decrease frequency of right pair effected by merge.
-//                             decreaseFrequency(*(next_elem), *(std::next(next_elem)));
-//                             // Increase frequency of new pair.
-//                             increaseFrequency(n, *(std::next(next_elem)));
 
-//                         }
-//                         // If the left elem is in the middle of the phrase and the right elem is at the end of the phrase
-//                         else if (curr_elem != curr_phrase->content.begin() && next_elem == std::prev(curr_phrase->content.end()))
-//                         {
-//                             // Decrease frequency of left pair effected by merge.
-//                             decreaseFrequency(*(std::prev(curr_elem)), *(curr_elem));
-//                             // Increase frequency of new pair.
-//                             increaseFrequency(*(std::prev(curr_elem)), n);
-
-                        
-//                             // For the right pair effected have to look at next phrase
-//                             if (curr_phrase != std::prev(phrase_lst.end()))
-//                             {
-//                                 auto next_phrase = std::next(curr_phrase);
-//                                 if (next_phrase->exp)
-//                                 {
-//                                     // Decrease frequency of right pair effected by merge.
-//                                     decreaseFrequency(*(next_elem), next_phrase->content.front());
-//                                     // Increase frequency of new pair
-//                                     increaseFrequency(n, next_phrase->content.front());
-//                                 }
-//                                 else
-//                                 {
-//                                     // Decrease frequency of right pair effected by merge.
-//                                     decreaseFrequency(*(next_elem), rvec[next_phrase->lrange]);
-//                                     // Increase frequency of new pair
-//                                     increaseFrequency(n, rvec[next_phrase->lrange]);
-//                                 }
-//                             }
-//                         }
-
-//                         // Delete twice for both elements in the bi-gram
-//                         curr_elem = curr_phrase->content.erase(curr_elem);
-//                         curr_elem = curr_phrase->content.erase(curr_elem);
-//                         // Replace with n
-//                         curr_phrase->content.insert(curr_elem, n);
-//                     } 
-//                     else{
-//                         curr_elem = std::next(curr_elem);
-//                     }
-//                 }
-//             }
-//             // If non-explicit phrase, have to check if it exists in Ref
-//             else
-//             {
-//                 // Make copy rvec which we will keep modifying in this section to maintain the correct elements to be replaced (think of how not to do this)
-//                 std::vector<unsigned int> copy_rvec;
-
-//                 // If it exists in Ref then we might have to make changes to non-explicit phrases.
-//                 if (hash_ranges.find(pair_key) != hash_ranges.end())
-//                 {
-//                     // Dummy value (think of better way)
-//                     int prev_left = 1000;
-//                     int decrement = 0;
-
-//                     // Make copy rvec which we will keep modifying in this section to maintain the correct elements to be replaced (think of how not to do this)
-//                     copy_rvec = rvec;
-
-//                     // Could have multiple occurances in Ref
-//                     for (int left : hash_ranges[pair_key])
-//                     {
-//                         if (left - prev_left == 1)
-//                             continue;
-                        
-//                         // Have to adjust the next occurance position after the previous replacement. Subtract up to the number of replacements previous done in reference.
-//                         // Assumes that the occurances are stored in order.
-//                         left = left - decrement;
-
-//                         // If the two elements are not at the beginning or end of the phrase then replace happens fully within the phrase
-//                         if (left > curr_phrase->lrange && left + 1 < curr_phrase->rrange)
-//                         {
-//                             // Decrease frequency of left pair effected by merge.
-//                             decreaseFrequency(copy_rvec[left-1], copy_rvec[left]);
-//                             // Increase frequency of new pair.
-//                             increaseFrequency(copy_rvec[left-1], n);
-//                             // Decrease frequency of right pair effected by merge.
-//                             decreaseFrequency(copy_rvec[left+1], copy_rvec[left+2]);
-//                             // Increase frequency of new pair.
-//                             increaseFrequency(n, copy_rvec[left+2]);
-//                         }
-//                         // If both elments are at the beginning and end of the phrases, then have to look at the end of the prev and start of the next
-//                         else if (left == curr_phrase->lrange && left + 1 == curr_phrase->rrange)
-//                         {
-//                             // For the left pair effected have to look at previous phrase
-//                             if (curr_phrase != phrase_lst.begin())
-//                             {
-//                                 auto prev_phrase = std::prev(curr_phrase);
-//                                 if (prev_phrase->exp)
-//                                 {
-//                                     // Decrease frequency of left pair effected by merge.
-//                                     decreaseFrequency(prev_phrase->content.back(), copy_rvec[left]);
-//                                     // Increase frequency of new pair.
-//                                     increaseFrequency(prev_phrase->content.back(), n);
-//                                 }
-//                                 else
-//                                 {
-//                                     // Decrease frequency of left pair effected by merge.
-//                                     decreaseFrequency(final_rvec[prev_phrase->rrange], copy_rvec[left]);
-//                                     // Increase frequency of new pair.
-//                                     increaseFrequency(final_rvec[prev_phrase->rrange], n);
-//                                 }
-//                             }
-                            
-//                             // For the right pair effected have to look at next phrase
-//                             if (curr_phrase != std::prev(phrase_lst.end()))
-//                             {
-//                                 auto next_phrase = std::next(curr_phrase);
-//                                 if (next_phrase->exp){
-//                                     // Decrease frequency of right pair effected by merge.
-//                                     decreaseFrequency(copy_rvec[left+1], next_phrase->content.front());
-//                                     // Increase frequency of new pair
-//                                     increaseFrequency(n, next_phrase->content.front());
-//                                 }
-//                                 else
-//                                 {
-//                                     // Decrease frequency of right pair effected by merge.
-//                                     decreaseFrequency(copy_rvec[left+1], rvec[next_phrase->lrange]);
-//                                     // Increase frequency of new pair
-//                                     increaseFrequency(n, rvec[next_phrase->lrange]);
-//                                 }
-//                             }
-//                         }
-//                         // If the left elem is at the beginning of phrase and the right elem is in middle of phrase
-//                         else if (left == curr_phrase->lrange && left + 1 < curr_phrase->rrange)
-//                         {
-//                             // For the left pair effected have to look at previous phrase
-//                             if (curr_phrase != phrase_lst.begin())
-//                             {
-//                                 auto prev_phrase = std::prev(curr_phrase);
-//                                 if (prev_phrase->exp)
-//                                 {
-//                                     // Decrease frequency of left pair effected by merge.
-//                                     decreaseFrequency(prev_phrase->content.back(), copy_rvec[left]);
-//                                     // Increase frequency of new pair.
-//                                     increaseFrequency(prev_phrase->content.back(), n);
-//                                 }
-//                                 else
-//                                 {
-//                                     // Decrease frequency of left pair effected by merge.
-//                                     decreaseFrequency(final_rvec[prev_phrase->rrange], copy_rvec[left]);
-//                                     // Increase frequency of new pair.
-//                                     increaseFrequency(final_rvec[prev_phrase->rrange], n);
-//                                 }
-//                             }
-//                             // Decrease frequency of right pair effected by merge.
-//                             decreaseFrequency(copy_rvec[left+1], copy_rvec[left+2]);
-//                             // Increase frequency of new pair.
-//                             increaseFrequency(n, copy_rvec[left+2]);
-//                         }
-//                         // If the left elem is in the middle of the phrase and the right elem is at the end of the phrase
-//                         else if (left > curr_phrase->lrange && left + 1 == curr_phrase->rrange)
-//                         {
-//                             // Decrease frequency of left pair effected by merge.
-//                             decreaseFrequency(copy_rvec[left-1], copy_rvec[left]);
-//                             // Increase frequency of new pair.
-//                             increaseFrequency(copy_rvec[left-1], n);
-                            
-//                             // For the right pair effected have to look at next phrase
-//                             if (curr_phrase != std::prev(phrase_lst.end()))
-//                             {
-//                                 auto next_phrase = std::next(curr_phrase);
-//                                 if (next_phrase->exp)
-//                                 {
-//                                     // Decrease frequency of right pair effected by merge.
-//                                     decreaseFrequency(copy_rvec[left+1], next_phrase->content.front());
-//                                     // Increase frequency of new pair
-//                                     increaseFrequency(n, next_phrase->content.front());
-//                                 }
-//                                 else
-//                                 {
-//                                     // Decrease frequency of right pair effected by merge.
-//                                     decreaseFrequency(copy_rvec[left+1], rvec[next_phrase->lrange]);
-//                                     // Increase frequency of new pair
-//                                     increaseFrequency(n, rvec[next_phrase->lrange]);
-//                                 }
-//                             }
-//                         }
-
-//                         // How to change non explicit phrase depending on bi-gram replaced
-//                         if (left >= curr_phrase->lrange && left + 1 <= curr_phrase->rrange)
-//                         {
-//                             curr_phrase->rrange = curr_phrase->rrange - 1;
-//                         }
-//                         else if (left < curr_phrase->lrange)
-//                         {
-//                             curr_phrase->lrange = curr_phrase->lrange - 1;
-//                             curr_phrase->rrange = curr_phrase->rrange - 1;
-//                         }
-//                         else if (left > curr_phrase->rrange)
-//                         {
-//                             continue;
-//                         }
-
-//                         // Update the values
-//                         prev_left = left;
-//                         decrement++;
-//                         copy_rvec[left] = n;
-//                         copy_rvec.erase(copy_rvec.begin() + left + 1);
-//                     }
-//                 }
-//                 final_rvec = copy_rvec;
-//             }
-//         }
 
 //         // Update Ref vector
 //         if (hash_ranges.find(pair_key) != hash_ranges.end()){
