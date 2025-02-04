@@ -169,8 +169,12 @@ class PhraseLinkedList
             }
 
             PhraseNode* prevNode = currNode->prev; // Store previous node before deleting
+            PhraseNode* forwardNode = currNode->next; // Store previous node before deleting
             delete currNode;
-            return prevNode; // Return the next node to allow easy iteration
+            if (prevNode != nullptr)
+                return prevNode; // Return the prev node to allow easy iteration
+            else
+                return forwardNode; // If prev node is nullptr then give the next node
         }
 
         // Insert at the front
