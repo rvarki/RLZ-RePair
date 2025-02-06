@@ -552,6 +552,7 @@ void phraseBoundaries(int left_elem, int right_elem)
             else{
                 curr_phrase->content.splice(curr_phrase->content.end(), next_phrase->content);
                 next_phrase = plist.remove(next_phrase);
+                continue;
             }
 
             // Update the phrase if it gets to this point
