@@ -37,6 +37,7 @@ char map[256]; // How to map back to the original chars.
 int alpha; // Number of characters used prior to RePair
 int n; // Technically |R| n - alpha gives number of rules
 int c = 0; // The number of chars encoded in .C file 
+int oid; // Max heap id
 
 // Stores the int version of the reference.
 RefLinkedList rlist;
@@ -123,7 +124,7 @@ void printAllRecords()
     for (int i = 0; i < Rec.size; i++)
     {
         total += Rec.records[i].freq;
-        spdlog::trace("({},{}) {} occs", printSymbol(Rec.records[i].pair.left), printSymbol(Rec.records[i].pair.right), Rec.records[i].freq);
+        spdlog::trace("({},{}) {} occs {} heap position {} hash position", printSymbol(Rec.records[i].pair.left), printSymbol(Rec.records[i].pair.right), Rec.records[i].freq, Rec.records[i].hpos, Rec.records[i].kpos);
     }
     spdlog::trace("Total: {}", total);
     spdlog::trace("");
@@ -386,7 +387,9 @@ void createMaxHeap(std::ifstream& pfile)
         }
     }
     // Print the records in the heap
-    spdlog::trace("Records in the heap at the start");
+    spdlog::trace("Records in the heap at the start (after removing freq 1 records)");
+    // Remove frequency 1 records
+    purgeHeap(&Heap);
     printAllRecords();
 
     // Reset the file pointer to the beginning of the file
@@ -665,7 +668,9 @@ void decreaseFrequency(int left, int right)
     new_pair.left = left;
     new_pair.right = right;
     int id = searchHash(Hash,new_pair);
-    decFreq(&Heap,id);
+    if (id != -1 && id != oid){
+        decFreq(&Heap,id);
+    }
 }
 
 /**
@@ -720,10 +725,10 @@ void repair(std::ofstream& R, std::ofstream& C)
         spdlog::error("Error writing map to R file");
     }
 
-    int id = extractMax(&Heap);
-    while (id != -1)
+    oid = extractMax(&Heap);
+    while (oid != -1)
     {
-        Trecord* orec = &Rec.records[id];
+        Trecord* orec = &Rec.records[oid];
         // When max frequency is 1, RePair ends.
         if (orec->freq == 1){
             break;
@@ -1011,10 +1016,13 @@ void repair(std::ofstream& R, std::ofstream& C)
         }
 
         // Remove old record
-        removeRecord(&Rec,id);
+        removeRecord(&Rec,oid);
+
+        // Remove frequency 1 records
+        purgeHeap(&Heap);
 
         // Get next value in max heap
-        id = extractMax(&Heap);
+        oid = extractMax(&Heap);
 
         // Update n
         n++;
