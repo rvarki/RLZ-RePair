@@ -18,15 +18,13 @@ class PhraseNode
     public: 
         std::list<unsigned int> content;
         bool exp;
-        bool leftReplaced;
-        bool rightReplaced;
         RefNode* lnode;
         RefNode* rnode;
         PhraseNode* prev;
         PhraseNode* next;
 
-        PhraseNode(RefNode* lnode, RefNode* rnode) : content({}), exp(false), leftReplaced(false), rightReplaced(false), lnode(lnode), rnode(rnode), prev(nullptr), next(nullptr) {}
-        PhraseNode(std::list<unsigned int> ilist) : content(ilist), exp(true), leftReplaced(false), rightReplaced(false), lnode(nullptr), rnode(nullptr), prev(nullptr), next(nullptr) {}
+        PhraseNode(RefNode* lnode, RefNode* rnode) : content({}), exp(false), lnode(lnode), rnode(rnode), prev(nullptr), next(nullptr) {}
+        PhraseNode(std::list<unsigned int> ilist) : content(ilist), exp(true), lnode(nullptr), rnode(nullptr), prev(nullptr), next(nullptr) {}
 };
 
 

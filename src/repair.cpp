@@ -784,61 +784,65 @@ void repair(std::ofstream& R, std::ofstream& C)
                         increaseFrequency(n, rightrightElem);
 
                     }
-                    // If range touches the edges, we can only do the decrease frequency at the moment.
+                    // If range touches the edges
                     else if (phrase_results[i].start == lref->pos && phrase_results[i].stop == rref->pos)
                     {
-                        nexp_phrase->leftReplaced = true;
                         if (nexp_phrase->prev != nullptr && nexp_phrase->prev->exp){
                             leftleftElem = nexp_phrase->prev->content.back();
                             decreaseFrequency(leftleftElem, leftElem);
+                            increaseFrequency(leftleftElem, n);
                         } 
-                        else if (nexp_phrase->prev != nullptr && !nexp_phrase->prev->rightReplaced) {
+                        else if (nexp_phrase->prev != nullptr && !nexp_phrase->prev->exp) {
                             leftleftElem = rlist.findNearestRef(nexp_phrase->prev->rnode)->val;
                             decreaseFrequency(leftleftElem, leftElem);
+                            increaseFrequency(leftleftElem, n);
                         }
 
-                        nexp_phrase->rightReplaced = true;
                         if (nexp_phrase->next != nullptr && nexp_phrase->next->exp){
                             rightrightElem = nexp_phrase->next->content.front();
                             decreaseFrequency(rightElem, rightrightElem);
+                            increaseFrequency(n, rightrightElem);
                         } 
-                        else if (nexp_phrase->next != nullptr && !nexp_phrase->next->leftReplaced) {
+                        else if (nexp_phrase->next != nullptr && !nexp_phrase->next->exp) {
                             rightrightElem = rlist.findNearestRef(nexp_phrase->next->lnode)->val;
                             decreaseFrequency(rightElem, rightrightElem);
+                            increaseFrequency(n, rightrightElem);
                         }
                     }
                     // If range touches left edge, we can only decrease the left pair at the moment.
                     else if (phrase_results[i].start == lref->pos &&  phrase_results[i].stop != rref->pos)
                     {
-                        nexp_phrase->leftReplaced = true;
                         if (nexp_phrase->prev != nullptr && nexp_phrase->prev->exp){
                             leftleftElem = nexp_phrase->prev->content.back();
                             decreaseFrequency(leftleftElem, leftElem);
+                            increaseFrequency(leftleftElem, n);
                         } 
-                        else if (nexp_phrase->prev != nullptr && !nexp_phrase->prev->rightReplaced) {
+                        else if (nexp_phrase->prev != nullptr && !nexp_phrase->prev->exp) {
                             leftleftElem = rlist.findNearestRef(nexp_phrase->prev->rnode)->val;
                             decreaseFrequency(leftleftElem, leftElem);
+                            increaseFrequency(leftleftElem, n);
                         }
 
                         rightrightElem = rlist.findForwardRef(rref)->val;
                         decreaseFrequency(rightElem, rightrightElem);
                         increaseFrequency(n, rightrightElem);
                     }
-                    // If range touches right edge, we can only decrease right pair at the moment.
+                    // If range touches right edge
                     else if (phrase_results[i].start != lref->pos &&  phrase_results[i].stop == rref->pos)
                     {
                         leftleftElem = rlist.findNearestRef(lref->prev)->val;
                         decreaseFrequency(leftleftElem, leftElem);
                         increaseFrequency(leftleftElem, n);
 
-                        nexp_phrase->rightReplaced = true;
                         if (nexp_phrase->next != nullptr && nexp_phrase->next->exp){
                             rightrightElem = nexp_phrase->next->content.front();
                             decreaseFrequency(rightElem, rightrightElem);
+                            increaseFrequency(n, rightrightElem);
                         } 
-                        else if (nexp_phrase->next != nullptr && !nexp_phrase->next->leftReplaced) {
+                        else if (nexp_phrase->next != nullptr && !nexp_phrase->next->exp) {
                             rightrightElem = rlist.findNearestRef(nexp_phrase->next->lnode)->val;
                             decreaseFrequency(rightElem, rightrightElem);
+                            increaseFrequency(n, rightrightElem);
                         }
                     }
                     else{
@@ -892,16 +896,10 @@ void repair(std::ofstream& R, std::ofstream& C)
                                 else
                                 {
                                     int leftleftElem = rlist.findNearestRef(prev_phrase->rnode)->val;
-                                    if (prev_phrase->rightReplaced){
-                                        increaseFrequency(leftleftElem, n);
-                                        prev_phrase->rightReplaced = false;
-                                    }
-                                    else{
-                                        // Decrease frequency of left pair effected by merge.
-                                        decreaseFrequency(leftleftElem, *(curr_elem));
-                                        // Increase frequency of new pair.
-                                        increaseFrequency(leftleftElem, n);
-                                    }
+                                    // Decrease frequency of left pair effected by merge.
+                                    decreaseFrequency(leftleftElem, *(curr_elem));
+                                    // Increase frequency of new pair.
+                                    increaseFrequency(leftleftElem, n);
                                 }
                             }
                             // For the right pair effected have to look at next phrase
@@ -917,16 +915,10 @@ void repair(std::ofstream& R, std::ofstream& C)
                                 }
                                 else{
                                     int rightrightElem = rlist.findNearestRef(next_phrase->lnode)->val;
-                                    if (next_phrase->leftReplaced){
-                                        increaseFrequency(n, rightrightElem);
-                                        next_phrase->leftReplaced = false;
-                                    }
-                                    else{
-                                        // Decrease frequency of right pair effected by merge.
-                                        decreaseFrequency(*(next_elem), rightrightElem);
-                                        // Increase frequency of new pair
-                                        increaseFrequency(n, rightrightElem);
-                                    }
+                                    // Decrease frequency of right pair effected by merge.
+                                    decreaseFrequency(*(next_elem), rightrightElem);
+                                    // Increase frequency of new pair
+                                    increaseFrequency(n, rightrightElem);
                                 }
                             }
                         }
@@ -947,16 +939,10 @@ void repair(std::ofstream& R, std::ofstream& C)
                                 else
                                 {
                                     int leftleftElem = rlist.findNearestRef(prev_phrase->rnode)->val;
-                                    if (prev_phrase->rightReplaced){
-                                        increaseFrequency(leftleftElem, n);
-                                        prev_phrase->rightReplaced = false;
-                                    }
-                                    else{
-                                        // Decrease frequency of left pair effected by merge.
-                                        decreaseFrequency(leftleftElem, *(curr_elem));
-                                        // Increase frequency of new pair.
-                                        increaseFrequency(leftleftElem, n);
-                                    }
+                                    // Decrease frequency of left pair effected by merge.
+                                    decreaseFrequency(leftleftElem, *(curr_elem));
+                                    // Increase frequency of new pair.
+                                    increaseFrequency(leftleftElem, n);
                                 }
                             }
                             // Decrease frequency of right pair effected by merge.
@@ -987,16 +973,10 @@ void repair(std::ofstream& R, std::ofstream& C)
                                 else
                                 {
                                     int rightrightElem = rlist.findNearestRef(next_phrase->lnode)->val;
-                                    if (next_phrase->leftReplaced){
-                                        increaseFrequency(n, rightrightElem);
-                                        next_phrase->leftReplaced = false;
-                                    }
-                                    else{
-                                        // Decrease frequency of right pair effected by merge.
-                                        decreaseFrequency(*(next_elem), rightrightElem);
-                                        // Increase frequency of new pair
-                                        increaseFrequency(n, rightrightElem);
-                                    }
+                                    // Decrease frequency of right pair effected by merge.
+                                    decreaseFrequency(*(next_elem), rightrightElem);
+                                    // Increase frequency of new pair
+                                    increaseFrequency(n, rightrightElem);
                                 }
                             }
                         } 
@@ -1005,34 +985,10 @@ void repair(std::ofstream& R, std::ofstream& C)
                         curr_elem = curr_phrase->content.erase(curr_elem);
                         // Replace with n
                         curr_phrase->content.insert(curr_elem, n);
-                    } 
-                    else{
-                        // Adjust for non explicit phrases
-                        if (curr_phrase != plist.getHead() && curr_phrase->prev->rightReplaced && curr_elem == curr_phrase->content.begin())
-                        {
-                            increaseFrequency(n, *(curr_elem));
-                            curr_phrase->prev->rightReplaced = false;
-                        }
-                        if (curr_phrase != plist.getTail() && curr_phrase->next->leftReplaced && curr_elem == std::prev(curr_phrase->content.end()))
-                        {
-                            increaseFrequency(*(curr_elem), n);
-                            curr_phrase->next->leftReplaced = false;
-                        }
-                        curr_elem = std::next(curr_elem);
                     }
-                }
-            }
-            else
-            {
-                if (curr_phrase != plist.getHead() && curr_phrase->prev->rightReplaced)
-                {
-                    increaseFrequency(n, rlist.findNearestRef(curr_phrase->lnode)->val);
-                    curr_phrase->prev->rightReplaced = false;
-                }
-                if (curr_phrase != plist.getTail() && curr_phrase->next->leftReplaced)
-                {
-                    increaseFrequency(rlist.findNearestRef(curr_phrase->rnode)->val, n);
-                    curr_phrase->next->leftReplaced = false;
+                    else{
+                        curr_elem = std::next(curr_elem);                        
+                    } 
                 }
             }
             curr_phrase = curr_phrase->next;
