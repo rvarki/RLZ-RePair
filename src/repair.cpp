@@ -577,6 +577,11 @@ void phraseBoundaries(int left_elem, int right_elem)
  * or the leftmost elem of a non-explicit phrase and the previous elem in the reference form the provided bi-gram
  * then remove the offending elem from the non-explicit phrase and create an explicit phrase.
  * 
+ * This function should uphold the commitment that when we create or add to an explicit phrase to the left of the
+ * current phrase that we switch the current phrase to the previous phrase (bi-gram formed to the left of the phrase).
+ * If we create or add to an explicit phrase to the right (bi-gram formed to the right of the phrase) 
+ * then the iteration should maintain the same current phrase.  
+ * 
  * @param [in] left_elem [int] the left elem of the max occuring bi-gram
  * @param [in] right_elem [int] the right elem of the max occuring bi-gram
  * 
@@ -596,7 +601,7 @@ void sourceBoundaries(int left_elem, int right_elem)
             RefNode* rightElem = rlist.findNearestRef(curr_phrase->lnode);
             RefNode* leftElem = rlist.findNearestRef(rightElem->prev);
 
-            // If the bi-gram can be formed then make the leftmost element make an explicit phrase of its own
+            // If the bi-gram can be formed then make the leftmost element of the current phrase an explicit phrase of its own
             if (leftElem != nullptr && rightElem != nullptr && leftElem->val == left_elem && rightElem->val == right_elem){
                 PhraseNode* prev_phrase = curr_phrase->prev;
                 // If the previous phrase is explicit, we can add directly to it.
@@ -610,19 +615,22 @@ void sourceBoundaries(int left_elem, int right_elem)
                     plist.insert(curr_phrase, content);
                 }
                 
+                // Update the information of the current phrase (left node pointer & existence).
                 curr_phrase->lnode = rlist.findForwardRef(curr_phrase->lnode);                    
                 // If non-explicit phrase is empty we delete it
                 if (curr_phrase->lnode == nullptr || curr_phrase->lnode->pos > curr_phrase->rnode->pos){ 
-                    curr_phrase = plist.remove(curr_phrase);
+                    curr_phrase = plist.remove(curr_phrase); // Removes the current phrase and sets the curr phrase to be the previous phrase
                     continue;
                 }
+                curr_phrase = curr_phrase->prev; // If it gets to here then we need to manually update the curr_phrase for the next iteration to be the previous phrase which should be guaranteed to exist.
+                continue;
             }
             
             // Check if the current phrase with its rightmost elem can form bi-gram with right elem on reference
             leftElem = rlist.findNearestRef(curr_phrase->rnode);
             rightElem = rlist.findForwardRef(leftElem);
             
-            // If the bi-gram can be formed then make the rightmost element make an explicit phrase of its own
+            // If the bi-gram can be formed then make the rightmost element of the current phrase an explicit phrase of its own
             if (leftElem != nullptr && rightElem != nullptr && leftElem->val == left_elem && rightElem->val == right_elem){
                 PhraseNode* next_phrase = curr_phrase->next;                    
                 // If the next phrase is explicit, we can add directly to it.
@@ -641,12 +649,29 @@ void sourceBoundaries(int left_elem, int right_elem)
                     }
                 }
 
+                // Update the information of the current phrase (right node pointer & existence).
                 curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode->prev);                       
                 // If non-explicit phrase is empty we delete it
                 if (curr_phrase->rnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){ 
-                    curr_phrase = plist.remove(curr_phrase);
-                    continue;
+                    curr_phrase = plist.remove(curr_phrase); // Removes the current phrase and sets the curr phrase to be the previous phrase
                 }
+                continue; // If it gets to here then the next iteration will have the same curr phrase.
+            }
+        }
+        // If explicit phrase then check surrounding phrases if they are explicit and if so merge.
+        else{
+            PhraseNode* prev_phrase = curr_phrase->prev;
+            // If prev phrase is also explicit merge into the prev phrase
+            if (prev_phrase != nullptr && prev_phrase->exp){
+                prev_phrase->content.splice(prev_phrase->content.end(), curr_phrase->content);
+                curr_phrase = plist.remove(curr_phrase); // Deletes the current phrase and sets the current phrase to be the previous phrase
+                continue;
+            }
+            PhraseNode* next_phrase = curr_phrase->next;
+            if (next_phrase != nullptr && next_phrase->exp){
+                curr_phrase->content.splice(curr_phrase->content.end(), next_phrase->content);
+                plist.remove(next_phrase); // Deletes the next phrase
+                continue; // If it gets to here then the next iteration will have the same curr phrase.
             }
         }
         curr_phrase = curr_phrase->next;
