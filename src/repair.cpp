@@ -9,7 +9,9 @@
 #include <list>
 #include <functional>
 #include <utility>
-#include <stack> 
+#include <stack>
+#include <vector> 
+#include <deque>
 #include "repair.h"
 #include "phrase.h"
 #include "IntervalTree.h"
@@ -61,7 +63,7 @@ struct pair_int_hash {
 
 // Hash table containing the reference ranges of pairs (bi-grams). 
 // The vector contains the left endpoint of the range corresponding to the pair in the bi-gram since the range is left endpoint to left endpoint + 1
-std::unordered_map<std::pair<int, int>, std::vector<int>, pair_int_hash> hash_ranges; 
+std::unordered_map<std::pair<int, int>, std::deque<int>, pair_int_hash> hash_ranges; 
 
 // List of explicit and non explicit phrases
 PhraseLinkedList plist;
@@ -302,7 +304,7 @@ void prepareRef(std::vector<unsigned char>& rtext)
         curr_elem = rlist.push_back(chars[x]);
         ref_pair.second = curr_elem->val;
         if (i != 0){
-            hash_ranges[ref_pair].emplace_back(i-1);
+            hash_ranges[ref_pair].push_back(i-1);
         }
         ref_pair.first = ref_pair.second;          
     }
@@ -752,7 +754,7 @@ void repair(std::ofstream& R, std::ofstream& C)
         // Check if the current max pair is in hash ranges, if is then have to go through non-explicit phrases.
         if (hash_ranges.find(std::pair<int,int>{left_elem,right_elem}) != hash_ranges.end())
         {
-            std::vector<int> ranges = hash_ranges[std::pair<int,int>(left_elem,right_elem)];
+            std::deque<int> ranges = hash_ranges[std::pair<int,int>(left_elem,right_elem)];
             bool firstRange = true;
             int prev_range;
             buildIntervalTree(); 
@@ -1001,7 +1003,8 @@ void repair(std::ofstream& R, std::ofstream& C)
         }
 
         // Think of better way. But going to clear and then repopulate due to laziness
-        // We will go in reverse since prev pointers are updated. We store left pointer of pair so do not want the end.
+        // We will go in reverse (but do forward insert) since prev pointers are updated. 
+        // We store left pointer of pair so do not want the end.
         hash_ranges.clear();
         RefNode* end_elem = rlist.findNearestRef(rlist.getTail());
         RefNode* begin_elem = rlist.findNearestRef(rlist.getHead());
@@ -1012,7 +1015,7 @@ void repair(std::ofstream& R, std::ofstream& C)
         {
             end_elem = rlist.findNearestRef(end_elem->prev);
             hash_pair.first = end_elem->val;
-            hash_ranges[hash_pair].emplace_back(end_elem->pos);
+            hash_ranges[hash_pair].push_front(end_elem->pos);
             hash_pair.second = hash_pair.first;
         }
 
