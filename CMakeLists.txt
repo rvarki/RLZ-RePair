@@ -4,6 +4,7 @@ cmake_minimum_required (VERSION 3.15)
 project (rlz-repair)
 
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_C_FLAGS "-O3")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 SET(VERSION_MAJOR "1")
 SET(VERSION_MINOR "0")
@@ -115,6 +116,13 @@ add_executable(repair
 
 target_include_directories(repair PUBLIC ${PROJECT_INCLUDE_DIR} ${PROJECT_INCLUDE_DIR}/repair ${THIRDPARTY_INCLUDE_DIR} ${THIRDPARTY_INCLUDE_DIR}/CLI)
 set(REPAIR ${CMAKE_CURRENT_BINARY_DIR}/bin/repair CACHE FILEPATH "Path to the repair executable" FORCE)
+
+# Despair
+add_executable(despair
+               ${PROJECT_SRC_DIR}/decompress/despair.c
+               ${PROJECT_SRC_DIR}/decompress/basics.c)
+target_include_directories(despair PUBLIC ${PROJECT_INCLUDE_DIR}/decompress)
+set(DESPAIR ${CMAKE_CURRENT_BINARY_DIR}/bin/despair CACHE FILEPATH "Path to the despair executable" FORCE)
 
 # Setting up python pipeline script
 configure_file(${CMAKE_CURRENT_LIST_DIR}/pipeline/rlz-repair.in

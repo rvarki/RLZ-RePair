@@ -20,40 +20,68 @@ dirname = os.path.dirname(os.path.abspath(__file__))
 
 rlz_exe = "@RLZ@"
 repair_exe = "@REPAIR@"
+despair_exe = "@DESPAIR@"
 
-def execute_command(command):
-    result = subprocess.run(command, shell=True, capture_output=False, text=True)
+def execute_command(args, command):
+    if (args.log_file is not None):
+        with open(args.log_file, 'a') as log_file:
+            result = subprocess.run(command, shell=True, capture_output=False, text=True, stdout=log_file, stderr=log_file) 
+    else:
+        result = subprocess.run(command, shell=True, capture_output=False, text=True)
 
 def runRLZ(args):
     command = ""
-    command += rlz_exe + " " + "-r " + args.ref + " " + "-s " + args.seq + " " + "-t " + str(args.threads) + " " + "-v " + str(args.verbosity)
-    if (args.bit):
-        command += "--bit "
+    command += rlz_exe + " " + "-r " + args.ref_file + " " + "-s " + args.seq_file + " " + "-t " + str(args.threads) + " " + "-v " + str(args.verbosity)
+    # if (args.bit):
+    #     command += "--bit "
     
-    execute_command(command)
+    execute_command(args, command)
 
 def runRePair(args):
     command = ""
-    command += repair_exe + " " + "-r " + args.ref + " " + "-p " + args.seq + ".rlz" + " " + "-v " + str(args.verbosity)
+    command += repair_exe + " " + "-r " + args.ref_file + " " + "-p " + args.seq_file + ".rlz" + " " + "-v " + str(args.verbosity)
     
-    execute_command(command)
+    execute_command(args, command)
+
+def runDesPair(args):
+    command = ""
+    command += despair_exe + " " + args.compress_prefix
+
+    execute_command(args, command)
+
 
 def main():
     parser = argparse.ArgumentParser(description=Description, formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument('-r', '--ref', help = "The reference file to be used for compression", type = str, required = True)
-    parser.add_argument('-s', '--seq', help = "The sequence file to compress", type = str, required = True)
-    parser.add_argument('-b', '--bit', help = "Do the RLZ compression at bit level", action='store_true')
-    parser.add_argument('-t', '--threads', help = "Number of threads", type = int, default = 1)
-    parser.add_argument('-d', '--decompress', help= "Decompress into the original file", action='store_true')
-    parser.add_argument('-v', '--verbosity', help='Set verbosity level (0 = none, 1 = basic, 2 = detailed)', type=int, choices=[0, 1, 2], default=0)
-    parser.add_argument('--log-file', help="Log filename prefix.", type = str)
+
+    compression_group = parser.add_argument_group("Compression Options")
+    compression_group.add_argument('-r', '--ref', help = "The reference file to be used for compression.", type = str, dest="ref_file")
+    compression_group.add_argument('-s', '--seq', help = "The sequence file to compress.", type = str, dest="seq_file")
+    #compression_group.add_argument('-b', '--bit', help = "Do the RLZ compression at bit level", action='store_true')
+    compression_group.add_argument('-t', '--threads', help = "Number of threads for RLZ section (default 1).", type = int, default = 1)
+    compression_group.add_argument('-v', '--verbosity', help='Set verbosity level (0 = none, 1 = basic, 2 = detailed).', type=int, choices=[0, 1, 2], default=0)
+
+    decompression_group = parser.add_argument_group("Decompression Options")
+    decompression_group.add_argument('-d', '--decompress', help = "Prefix of the compressed files to decompress.", type = str, dest="compress_prefix")
+
+    parser.add_argument('--log', help="Log filename.", type = str, dest="log_file")
+
     args = parser.parse_args()
-    print("############ STARTING RUNNING RLZ ############")
-    runRLZ(args)
-    print("############ FINISHED RUNNING RLZ ############")
-    print("############ STARING RUNNING REPAIR ############")
-    runRePair(args)
-    print("############ FINISHED RUNNING REPAIR ############")
+
+    if (args.compress_prefix is not None):
+        print("############ STARTING DECOMPRESSION ############")
+        runDesPair(args)
+        print("############ FINISHED DECOMPRESSION ############")
+    else:
+        print("############ STARTING RUNNING RLZ ############")
+        if (args.ref_file is None or args.seq_file is None):
+            print("A file needs to be specified for both -r and -s to run RLZ-RePair")
+            parser.print_help()
+        else:
+            runRLZ(args)
+        print("############ FINISHED RUNNING RLZ ############")
+        print("############ STARING RUNNING REPAIR ############")
+        runRePair(args)
+        print("############ FINISHED RUNNING REPAIR ############")
 
 if __name__ == '__main__':
     main()
