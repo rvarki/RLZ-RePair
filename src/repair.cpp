@@ -46,6 +46,9 @@ int oid; // Max heap id
 // Stores the int version of the reference.
 RefLinkedList rlist;
 
+// Array containing pointers to reference nodes for O(1) access to certain positions when needed.
+std::vector<RefNode*> rarray;
+
 // Boost hash function
 template <typename T>
 void hash_combine(std::size_t& seed, const T& value) {
@@ -85,6 +88,7 @@ std::chrono::duration<double> build_interval_time{0.0};
 std::chrono::duration<double> nonexplicit_phrase_time{0.0};
 std::chrono::duration<double> explicit_phrase_time{0.0};
 std::chrono::duration<double> hash_range_time{0.0};
+std::chrono::duration<double> total_time{0.0};
 
 /**
  * @brief Calculates the number of bytes encoded in the RLZ parse.
@@ -310,12 +314,14 @@ void prepareRef(std::vector<unsigned char>& rtext)
     RefNode* prev_elem;
     RefNode* curr_elem;
     std::pair<int, int> ref_pair;
+    rarray.reserve(rtext.size());
     for (int i = 0; i < rtext.size(); i++){
         unsigned char x = rtext[i];
         if (chars[x] == -1){
             chars[x] = alpha++;
         }
         curr_elem = rlist.push_back(chars[x]);
+        rarray.emplace_back(curr_elem);
         ref_pair.second = curr_elem->val;
         if (i != 0){
             hash_ranges[ref_pair].push_back(i-1);
@@ -382,7 +388,7 @@ void createMaxHeap(std::ifstream& pfile)
             for (uint64_t j = 0; j < len; j++)
             {
                 if (j == 0){
-                    rnode = rlist.findPos(pos);
+                    rnode = rarray[pos];
                 }
                 if (pair.left == -1){
                     pair.left = rnode->val;
@@ -446,7 +452,7 @@ void populatePhrases(std::ifstream& pfile)
         else
         {
             pfile.read(reinterpret_cast<char*>(&len), sizeof(uint64_t));
-            plist.push_back(rlist.findPos(pos), rlist.findPos(pos+len-1));
+            plist.push_back(rarray[pos], rarray[pos+len-1]);
         }
     }
 
@@ -838,7 +844,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                     continue;
                 }  
                 // Replace in Ref
-                RefNode* lref = rlist.findPos(curr_range);
+                RefNode* lref = rarray[curr_range];
                 RefNode* rref = rlist.findForwardRef(lref);
                 ITree::interval_vector phrase_results;
                 spdlog::trace("Pair to replace: ({},{})", lref->pos, rref->pos);
@@ -1183,6 +1189,7 @@ int main(int argc, char *argv[])
 
     spdlog::debug("The reference file provided: {}", ref_file);
     spdlog::debug("The RLZ parse file provided: {}", rlz_parse);
+    auto total_time_start = std::chrono::high_resolution_clock::now();
 
     // Opening Ref file 
     std::ifstream rfile(ref_file, std::ios::binary | std::ios::in);
@@ -1259,12 +1266,15 @@ int main(int argc, char *argv[])
     // RePair
     repair(R, C);
 
+    auto total_time_end = std::chrono::high_resolution_clock::now();
     spdlog::debug("Total Phrase Boundary Time (s): {:.6f}", std::chrono::duration<double>(phrase_boundary_time).count());
     spdlog::debug("Total Source Boundary Time (s): {:.6f}", std::chrono::duration<double>(source_boundary_time).count());
     spdlog::debug("Total Build Interval Tree Time (s): {:.6f}", std::chrono::duration<double>(build_interval_time).count());
     spdlog::debug("Total Non-explicit Phrase Time (s): {:.6f}", std::chrono::duration<double>(nonexplicit_phrase_time).count());
     spdlog::debug("Total Explicit Phrase Time (s): {:.6f}", std::chrono::duration<double>(explicit_phrase_time).count());
     spdlog::debug("Total Hash Range Time (s): {:.6f}", std::chrono::duration<double>(hash_range_time).count());
+    total_time = total_time_end - total_time_start;
+    spdlog::debug("Total Time (s): {:.6f}", std::chrono::duration<double>(total_time).count());
     
     R.close();
     C.close();

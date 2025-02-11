@@ -57,19 +57,19 @@ class RefLinkedList
             }
         }
 
-        // Find position in reference
-        RefNode* findPos(int pos)
-        {
-            RefNode* ref_elem = head;
-            while (ref_elem != nullptr)
-            {
-                if (ref_elem->pos == pos)
-                    return ref_elem;
-                else
-                    ref_elem = ref_elem->next;
-            }   
-            return nullptr;
-        }
+        // // Find position in reference
+        // RefNode* findPos(int pos)
+        // {
+        //     RefNode* ref_elem = head;
+        //     while (ref_elem != nullptr)
+        //     {
+        //         if (ref_elem->pos == pos)
+        //             return ref_elem;
+        //         else
+        //             ref_elem = ref_elem->next;
+        //     }   
+        //     return nullptr;
+        // }
 
         // If the phrase endpoint on ref is deleted, 
         // then find the new ref endpoint
