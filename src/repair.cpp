@@ -25,6 +25,8 @@ extern "C" {
     #include "hash.h"
 }
 
+int verbosity = 0; // The verbosity level set by the user.
+
 extern "C" float factor = 0.75f;
 
 int minsize = 256; // Not too sure of reason but needed for BigRePair data structure
@@ -331,11 +333,14 @@ void prepareRef(std::vector<unsigned char>& rtext)
     // Set n to be alpha
     n = alpha;
 
-    spdlog::trace("Reference at the start");
-    spdlog::trace("Size: {}", rlist.getSize());
-    printRef();
-    spdlog::trace("Hash ranges of reference bi-grams at the start");
-    printHashRanges();
+    // If trace messages are enabled
+    if (verbosity == 2){
+        spdlog::trace("Reference at the start");
+        spdlog::trace("Size: {}", rlist.getSize());
+        printRef();
+        spdlog::trace("Hash ranges of reference bi-grams at the start");
+        printHashRanges();
+    }
 }
 
 /**
@@ -404,7 +409,10 @@ void createMaxHeap(std::ifstream& pfile)
     spdlog::trace("Records in the heap at the start (after removing freq 1 records)");
     // Remove frequency 1 records
     purgeHeap(&Heap);
-    printAllRecords();
+
+    if (verbosity == 2){
+        printAllRecords();
+    }
 
     // Reset the file pointer to the beginning of the file
     pfile.clear();
@@ -447,8 +455,10 @@ void populatePhrases(std::ifstream& pfile)
     pfile.seekg(0, std::ios::beg);
 
     // Debug
-    spdlog::trace("The non-explicit phrases at the start");
-    printPhraseList();
+    if (verbosity == 2){
+        spdlog::trace("The non-explicit phrases at the start");
+        printPhraseList();
+    }
 }
 
 /**
@@ -578,8 +588,10 @@ void phraseBoundaries(int left_elem, int right_elem)
     }
 
     // Debug
-    spdlog::trace("Phrase list after phrase boundary condition.");
-    printPhraseList();
+    if (verbosity == 2){
+        spdlog::trace("Phrase list after phrase boundary condition.");
+        printPhraseList();
+    }
 }
 
 /**
@@ -689,8 +701,10 @@ void sourceBoundaries(int left_elem, int right_elem)
         curr_phrase = curr_phrase->next;
     }
     // Debug
-    spdlog::trace("Phrase list after source boundary condition.");
-    printPhraseList();
+    if (verbosity == 2){
+        spdlog::trace("Phrase list after source boundary condition.");
+        printPhraseList();
+    }
 }
 
 /**
@@ -703,7 +717,9 @@ void sourceBoundaries(int left_elem, int right_elem)
  */
 void decreaseFrequency(int left, int right)
 {
-    spdlog::trace("Decrease frequency: ({},{})", printSymbol(left), printSymbol(right));
+    if (verbosity == 2){
+        spdlog::trace("Decrease frequency: ({},{})", printSymbol(left), printSymbol(right));
+    }
     Tpair new_pair;
     new_pair.left = left;
     new_pair.right = right;
@@ -723,7 +739,9 @@ void decreaseFrequency(int left, int right)
  */
 void increaseFrequency(int left, int right)
 {
-    spdlog::trace("Increase frequency: ({},{})", printSymbol(left), printSymbol(right));
+    if (verbosity == 2){
+        spdlog::trace("Increase frequency: ({},{})", printSymbol(left), printSymbol(right));
+    }
     Tpair new_pair;
     new_pair.left = left;
     new_pair.right = right;
@@ -774,7 +792,9 @@ void repair(std::ofstream& R, std::ofstream& C)
             break;
         }
 
-        printMaxPair(n, orec);
+        if (verbosity == 1){
+            printMaxPair(n, orec);
+        }
 
         // Write pair to R file 
         R.write(reinterpret_cast<const char*>(&(orec->pair)), sizeof(Tpair));
@@ -814,7 +834,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                     prev_range = curr_range;
                     firstRange = false;
                 }
-                else if (curr_range - prev_range == 1){
+                else if (curr_range - prev_range == 1){ //TODO: Consecutive pairs might not be 1 apart in the ref after some deletions. Double check this.
                     continue;
                 }  
                 // Replace in Ref
@@ -1091,12 +1111,14 @@ void repair(std::ofstream& R, std::ofstream& C)
         n++;
 
         // Debug
-        spdlog::trace("");
-        spdlog::trace("*** Information after bi-gram replacement ***");
-        printRef();
-        printPhraseList();
-        printAllRecords();
-        spdlog::trace("*********************************************");
+        if (verbosity == 2){
+            spdlog::trace("");
+            spdlog::trace("*** Information after bi-gram replacement ***");
+            printRef();
+            printPhraseList();
+            printAllRecords();
+            spdlog::trace("*********************************************");
+        }
     }
 
     // Write the final integers to the C file
@@ -1135,7 +1157,6 @@ int main(int argc, char *argv[])
     CLI::App app("rlz - Run RePair with the RLZ parse.\n\nImplemented by Rahul Varki");
     std::string ref_file;
     std::string rlz_parse;
-    int verbosity = 0;
     std::string version = "Version: 1.0.0";
 
     app.add_option("-r,--ref", ref_file, "The reference file used to create the RLZ parse")->configurable()->required();
