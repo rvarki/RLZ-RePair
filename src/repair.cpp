@@ -15,6 +15,7 @@
 #include "repair.h"
 #include "IntervalTree.h"
 #include "doublelinkedlist.h"
+#include <chrono>
 
 extern "C" {
     #include "heap.h"
@@ -70,6 +71,18 @@ PhraseLinkedList plist;
 // Interval Tree for the non-explicit phrases
 typedef IntervalTree<int, PhraseNode*> ITree;
 ITree phrase_tree;
+
+// Timing information
+std::chrono::duration<double> prepare_ref_time{0.0};
+std::chrono::duration<double> calculate_size_time{0.0};
+std::chrono::duration<double> populate_phrase_time{0.0};
+std::chrono::duration<double> create_heap_time{0.0};
+std::chrono::duration<double> phrase_boundary_time{0.0};
+std::chrono::duration<double> source_boundary_time{0.0};
+std::chrono::duration<double> build_interval_time{0.0};
+std::chrono::duration<double> nonexplicit_phrase_time{0.0};
+std::chrono::duration<double> explicit_phrase_time{0.0};
+std::chrono::duration<double> hash_range_time{0.0};
 
 /**
  * @brief Calculates the number of bytes encoded in the RLZ parse.
@@ -772,8 +785,15 @@ void repair(std::ofstream& R, std::ofstream& C)
         int left_elem = orec->pair.left;
         int right_elem = orec->pair.right;
         
+        auto pbound_start = std::chrono::high_resolution_clock::now();
         phraseBoundaries(left_elem, right_elem);
+        auto pbound_end = std::chrono::high_resolution_clock::now();
+        phrase_boundary_time += pbound_end - pbound_start;
+
+        auto sbound_start = std::chrono::high_resolution_clock::now();
         sourceBoundaries(left_elem, right_elem);
+        auto sbound_end = std::chrono::high_resolution_clock::now();
+        source_boundary_time += sbound_end - sbound_start;
         
         // Check if the current max pair is in hash ranges, if is then have to go through non-explicit phrases.
         if (hash_ranges.find(std::pair<int,int>{left_elem,right_elem}) != hash_ranges.end())
@@ -781,7 +801,13 @@ void repair(std::ofstream& R, std::ofstream& C)
             std::deque<int> ranges = hash_ranges[std::pair<int,int>(left_elem,right_elem)];
             bool firstRange = true;
             int prev_range;
+
+            auto build_interval_start = std::chrono::high_resolution_clock::now();
             buildIntervalTree(); 
+            auto build_interval_end = std::chrono::high_resolution_clock::now();
+            build_interval_time += build_interval_end - build_interval_start;
+
+            auto nexp_start = std::chrono::high_resolution_clock::now();
             for (int curr_range : ranges)
             {
                 if (firstRange){
@@ -884,10 +910,13 @@ void repair(std::ofstream& R, std::ofstream& C)
                 rlist.replacePair(n, lref, rref);
                 prev_range = curr_range;
             }
+            auto nexp_end = std::chrono::high_resolution_clock::now();
+            nonexplicit_phrase_time += nexp_end - nexp_start;
         }
         
         // Have to process the explicit phrases and little bit of the non explicit phrases
         PhraseNode* curr_phrase = plist.getHead();
+        auto exp_start = std::chrono::high_resolution_clock::now();
         while(curr_phrase != nullptr)
         {
             if (curr_phrase->exp)
@@ -1025,10 +1054,13 @@ void repair(std::ofstream& R, std::ofstream& C)
             }
             curr_phrase = curr_phrase->next;
         }
+        auto exp_end = std::chrono::high_resolution_clock::now();
+        explicit_phrase_time += exp_end - exp_start;
 
         // Think of better way. But going to clear and then repopulate due to laziness
         // We will go in reverse (but do forward insert) since prev pointers are updated. 
         // We store left pointer of pair so do not want the end.
+        auto hash_range_start = std::chrono::high_resolution_clock::now();
         hash_ranges.clear();
         RefNode* end_elem = rlist.findNearestRef(rlist.getTail());
         RefNode* begin_elem = rlist.findNearestRef(rlist.getHead());
@@ -1042,6 +1074,9 @@ void repair(std::ofstream& R, std::ofstream& C)
             hash_ranges[hash_pair].push_front(end_elem->pos);
             hash_pair.second = hash_pair.first;
         }
+
+        auto hash_range_end = std::chrono::high_resolution_clock::now();
+        hash_range_time += hash_range_end - hash_range_start;
 
         // Remove old record
         removeRecord(&Rec,oid);
@@ -1169,23 +1204,46 @@ int main(int argc, char *argv[])
     }
 
     // Process Ref
+    auto prepare_ref_start = std::chrono::high_resolution_clock::now();
     prepareRef(rtext);
+    auto prepare_ref_end = std::chrono::high_resolution_clock::now();
+    prepare_ref_time += prepare_ref_end - prepare_ref_start;
+    spdlog::debug("Prepare Reference Total Time (s): {:.6f}", std::chrono::duration<double>(prepare_ref_time).count());
 
     // Clear char representation of Ref
     rtext.clear();
     rtext.shrink_to_fit();
 
     // Calculate the size of the original sequence file using the len field of the pairs
+    auto calculate_size_start = std::chrono::high_resolution_clock::now();
     psize = calculateParseBytes(pfile);
+    auto calculate_size_end = std::chrono::high_resolution_clock::now();
+    calculate_size_time += calculate_size_end - calculate_size_start;
+    spdlog::debug("Calculate Parse Size Total Time (s): {:.6f}", std::chrono::duration<double>(calculate_size_time).count());
 
     // Call populatePhrases function
+    auto parse_phrase_start = std::chrono::high_resolution_clock::now();
     populatePhrases(pfile);
+    auto parse_phrase_end = std::chrono::high_resolution_clock::now();
+    populate_phrase_time += parse_phrase_end - parse_phrase_start;
+    spdlog::debug("Populate Phrase Total Time (s): {:.6f}", std::chrono::duration<double>(populate_phrase_time).count());
 
     // Call createMaxHeap function
+    auto create_heap_start = std::chrono::high_resolution_clock::now();
     createMaxHeap(pfile);
+    auto create_heap_end = std::chrono::high_resolution_clock::now();
+    create_heap_time += create_heap_end - create_heap_start;
+    spdlog::debug("Create Max Heap Total Time (s): {:.6f}", std::chrono::duration<double>(create_heap_time).count());
 
     // RePair
     repair(R, C);
+
+    spdlog::debug("Total Phrase Boundary Time (s): {:.6f}", std::chrono::duration<double>(phrase_boundary_time).count());
+    spdlog::debug("Total Source Boundary Time (s): {:.6f}", std::chrono::duration<double>(source_boundary_time).count());
+    spdlog::debug("Total Build Interval Tree Time (s): {:.6f}", std::chrono::duration<double>(build_interval_time).count());
+    spdlog::debug("Total Non-explicit Phrase Time (s): {:.6f}", std::chrono::duration<double>(nonexplicit_phrase_time).count());
+    spdlog::debug("Total Explicit Phrase Time (s): {:.6f}", std::chrono::duration<double>(explicit_phrase_time).count());
+    spdlog::debug("Total Hash Range Time (s): {:.6f}", std::chrono::duration<double>(hash_range_time).count());
     
     R.close();
     C.close();
