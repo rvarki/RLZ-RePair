@@ -10,7 +10,8 @@ class RefNode
         bool deleted;
         RefNode* prev;
         RefNode* next;
-        RefNode(int value) : val(value), pos(0), deleted(false), prev(nullptr), next(nullptr) {}
+        RefNode* forward;
+        RefNode(int value) : val(value), pos(0), deleted(false), prev(nullptr), next(nullptr), forward(nullptr) {}
 };
 
 class PhraseNode
