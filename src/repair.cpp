@@ -792,7 +792,7 @@ void repair(std::ofstream& R, std::ofstream& C)
             break;
         }
 
-        if (verbosity == 1){
+        if (verbosity == 1 || verbosity == 2){
             printMaxPair(n, orec);
         }
 
