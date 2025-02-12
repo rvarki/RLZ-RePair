@@ -825,8 +825,6 @@ void repair(std::ofstream& R, std::ofstream& C)
         if (hash_ranges.find(std::pair<int,int>{left_elem,right_elem}) != hash_ranges.end())
         {
             std::deque<int> ranges = hash_ranges[std::pair<int,int>(left_elem,right_elem)];
-            bool firstRange = true;
-            int prev_range;
 
             auto build_interval_start = std::chrono::high_resolution_clock::now();
             buildIntervalTree(); 
@@ -836,11 +834,7 @@ void repair(std::ofstream& R, std::ofstream& C)
             auto nexp_start = std::chrono::high_resolution_clock::now();
             for (int curr_range : ranges)
             {
-                if (firstRange){
-                    prev_range = curr_range;
-                    firstRange = false;
-                }
-                else if (curr_range - prev_range == 1){ //TODO: Consecutive pairs might not be 1 apart in the ref after some deletions. Double check this.
+                if (rarray[curr_range]->deleted){ 
                     continue;
                 }  
                 // Replace in Ref
@@ -934,7 +928,6 @@ void repair(std::ofstream& R, std::ofstream& C)
                     }
                 }
                 rlist.replacePair(n, lref, rref);
-                prev_range = curr_range;
             }
             auto nexp_end = std::chrono::high_resolution_clock::now();
             nonexplicit_phrase_time += nexp_end - nexp_start;
