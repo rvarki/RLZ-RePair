@@ -324,7 +324,10 @@ void prepareRef(std::vector<unsigned char>& rtext)
         rarray.emplace_back(curr_elem);
         ref_pair.second = curr_elem->val;
         if (i != 0){
+            auto hash_range_start = std::chrono::high_resolution_clock::now();
             hash_ranges[ref_pair].push_back(i-1);
+            auto hash_range_end = std::chrono::high_resolution_clock::now();
+            hash_range_time += hash_range_end - hash_range_start;
         }
         ref_pair.first = ref_pair.second;          
     }
@@ -821,10 +824,11 @@ void repair(std::ofstream& R, std::ofstream& C)
         auto sbound_end = std::chrono::high_resolution_clock::now();
         source_boundary_time += sbound_end - sbound_start;
         
+        std::pair<int,int> max_pair = {left_elem,right_elem};
         // Check if the current max pair is in hash ranges, if is then have to go through non-explicit phrases.
-        if (hash_ranges.find(std::pair<int,int>{left_elem,right_elem}) != hash_ranges.end())
+        if (hash_ranges.find(max_pair) != hash_ranges.end())
         {
-            std::deque<int> ranges = hash_ranges[std::pair<int,int>(left_elem,right_elem)];
+            std::deque<int> ranges = hash_ranges[max_pair];
 
             auto build_interval_start = std::chrono::high_resolution_clock::now();
             buildIntervalTree(); 
@@ -834,12 +838,20 @@ void repair(std::ofstream& R, std::ofstream& C)
             auto nexp_start = std::chrono::high_resolution_clock::now();
             for (int curr_range : ranges)
             {
-                if (rarray[curr_range]->deleted){ 
-                    continue;
-                }  
                 // Replace in Ref
                 RefNode* lref = rarray[curr_range];
                 RefNode* rref = rlist.findForwardRef(lref);
+
+                // There is now no guarantee that the pair specified in the hash table actually exists due to lazily handling the hash table.
+                if (lref == nullptr || rref == nullptr || lref->deleted || rref->deleted || lref->val != left_elem || rref->val != right_elem){
+                    continue;
+                }
+
+                if (rarray[curr_range]->deleted){ 
+                    continue;
+                }  
+                
+                // Create Interval Tree
                 ITree::interval_vector phrase_results;
                 spdlog::trace("Pair to replace: ({},{})", lref->pos, rref->pos);
                 phrase_results = phrase_tree.findContained(lref->pos,rref->pos); // Fully contained within interval
@@ -927,8 +939,30 @@ void repair(std::ofstream& R, std::ofstream& C)
                         spdlog::error("Should not logically happen!");
                     }
                 }
+                // Lazy delete the adjacent pairs effected by the merge
+                std::pair<int,int> hash_pair;
+                RefNode* llref = rlist.findNearestRef(lref->prev);
+                RefNode* rrref = rlist.findForwardRef(rref);
+                auto hash_range_start = std::chrono::high_resolution_clock::now(); 
+                if (llref != nullptr){
+                    hash_pair.first = llref->val;
+                    hash_pair.second = n;
+                    hash_ranges[hash_pair].push_back(llref->pos);
+                }
+                if (rrref != nullptr){
+                    hash_pair.first = n;
+                    hash_pair.second = rrref->val;
+                    hash_ranges[hash_pair].push_back(lref->pos);
+                }
+                auto hash_range_end = std::chrono::high_resolution_clock::now();
+                hash_range_time += hash_range_end - hash_range_start;
+                // Replace the pair in the reference.
                 rlist.replacePair(n, lref, rref);
             }
+            auto hash_range_start = std::chrono::high_resolution_clock::now();
+            hash_ranges.erase(max_pair); // Delete the max pair in the hash table since we have done all the replacements in the nexp phrases.
+            auto hash_range_end = std::chrono::high_resolution_clock::now();
+            hash_range_time += hash_range_end - hash_range_start;
             auto nexp_end = std::chrono::high_resolution_clock::now();
             nonexplicit_phrase_time += nexp_end - nexp_start;
         }
@@ -1076,27 +1110,6 @@ void repair(std::ofstream& R, std::ofstream& C)
         auto exp_end = std::chrono::high_resolution_clock::now();
         explicit_phrase_time += exp_end - exp_start;
 
-        // Think of better way. But going to clear and then repopulate due to laziness
-        // We will go in reverse (but do forward insert) since prev pointers are updated. 
-        // We store left pointer of pair so do not want the end.
-        auto hash_range_start = std::chrono::high_resolution_clock::now();
-        hash_ranges.clear();
-        RefNode* end_elem = rlist.findNearestRef(rlist.getTail());
-        RefNode* begin_elem = rlist.findNearestRef(rlist.getHead());
-        std::pair<int,int> hash_pair;
-        hash_pair.second = end_elem->val;
-
-        while (end_elem != begin_elem)
-        {
-            end_elem = rlist.findNearestRef(end_elem->prev);
-            hash_pair.first = end_elem->val;
-            hash_ranges[hash_pair].push_front(end_elem->pos);
-            hash_pair.second = hash_pair.first;
-        }
-
-        auto hash_range_end = std::chrono::high_resolution_clock::now();
-        hash_range_time += hash_range_end - hash_range_start;
-
         // Remove old record
         removeRecord(&Rec,oid);
 
@@ -1229,7 +1242,6 @@ int main(int argc, char *argv[])
     prepareRef(rtext);
     auto prepare_ref_end = std::chrono::high_resolution_clock::now();
     prepare_ref_time += prepare_ref_end - prepare_ref_start;
-    spdlog::debug("Prepare Reference Total Time (s): {:.6f}", std::chrono::duration<double>(prepare_ref_time).count());
 
     // Clear char representation of Ref
     rtext.clear();
@@ -1240,33 +1252,35 @@ int main(int argc, char *argv[])
     psize = calculateParseBytes(pfile);
     auto calculate_size_end = std::chrono::high_resolution_clock::now();
     calculate_size_time += calculate_size_end - calculate_size_start;
-    spdlog::debug("Calculate Parse Size Total Time (s): {:.6f}", std::chrono::duration<double>(calculate_size_time).count());
 
     // Call populatePhrases function
     auto parse_phrase_start = std::chrono::high_resolution_clock::now();
     populatePhrases(pfile);
     auto parse_phrase_end = std::chrono::high_resolution_clock::now();
     populate_phrase_time += parse_phrase_end - parse_phrase_start;
-    spdlog::debug("Populate Phrase Total Time (s): {:.6f}", std::chrono::duration<double>(populate_phrase_time).count());
 
     // Call createMaxHeap function
     auto create_heap_start = std::chrono::high_resolution_clock::now();
     createMaxHeap(pfile);
     auto create_heap_end = std::chrono::high_resolution_clock::now();
     create_heap_time += create_heap_end - create_heap_start;
-    spdlog::debug("Create Max Heap Total Time (s): {:.6f}", std::chrono::duration<double>(create_heap_time).count());
 
     // RePair
     repair(R, C);
 
     auto total_time_end = std::chrono::high_resolution_clock::now();
+    spdlog::debug("Total Prepare Reference Time (s): {:.6f}", std::chrono::duration<double>(prepare_ref_time).count());
+    spdlog::debug("Total Calculate Parse Size Time (s): {:.6f}", std::chrono::duration<double>(calculate_size_time).count());
+    spdlog::debug("Total Populate Phrase Time (s): {:.6f}", std::chrono::duration<double>(populate_phrase_time).count());
+    spdlog::debug("Total Create Max Heap Time (s): {:.6f}", std::chrono::duration<double>(create_heap_time).count());
     spdlog::debug("Total Phrase Boundary Time (s): {:.6f}", std::chrono::duration<double>(phrase_boundary_time).count());
     spdlog::debug("Total Source Boundary Time (s): {:.6f}", std::chrono::duration<double>(source_boundary_time).count());
     spdlog::debug("Total Build Interval Tree Time (s): {:.6f}", std::chrono::duration<double>(build_interval_time).count());
     spdlog::debug("Total Non-explicit Phrase Time (s): {:.6f}", std::chrono::duration<double>(nonexplicit_phrase_time).count());
     spdlog::debug("Total Explicit Phrase Time (s): {:.6f}", std::chrono::duration<double>(explicit_phrase_time).count());
-    spdlog::debug("Total Hash Range Time (s): {:.6f}", std::chrono::duration<double>(hash_range_time).count());
+    spdlog::debug("Total Hash Range Update Time (s): {:.6f}", std::chrono::duration<double>(hash_range_time).count());
     total_time = total_time_end - total_time_start;
+    spdlog::debug("*********************************************");
     spdlog::debug("Total Time (s): {:.6f}", std::chrono::duration<double>(total_time).count());
     
     R.close();
