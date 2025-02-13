@@ -147,26 +147,30 @@ private:
     // Utility function: Fixing Deletion Violation
     void fixDelete(Node *&node)
     {
-        while (node != root && node->color == BLACK)
+        while (node != root && node != nullptr && node->color == BLACK)
         {
-            if (node == node->parent->left)
+            if (node->parent != nullptr && node == node->parent->left)
             {
                 Node *sibling = node->parent->right;
-                if (sibling->color == RED)
+                
+                if (sibling != nullptr && sibling->color == RED)
                 {
                     sibling->color = BLACK;
                     node->parent->color = RED;
                     rotateLeft(node->parent);
                     sibling = node->parent->right;
                 }
-                if ((sibling->left == nullptr || sibling->left->color == BLACK) && (sibling->right == nullptr || sibling->right->color == BLACK))
+
+                if (sibling != nullptr &&
+                    (sibling->left == nullptr || sibling->left->color == BLACK) &&
+                    (sibling->right == nullptr || sibling->right->color == BLACK))
                 {
                     sibling->color = RED;
                     node = node->parent;
                 }
                 else
                 {
-                    if (sibling->right == nullptr || sibling->right->color == BLACK)
+                    if (sibling != nullptr && (sibling->right == nullptr || sibling->right->color == BLACK))
                     {
                         if (sibling->left != nullptr)
                             sibling->left->color = BLACK;
@@ -174,32 +178,40 @@ private:
                         rotateRight(sibling);
                         sibling = node->parent->right;
                     }
-                    sibling->color = node->parent->color;
-                    node->parent->color = BLACK;
-                    if (sibling->right != nullptr)
-                        sibling->right->color = BLACK;
-                    rotateLeft(node->parent);
+
+                    if (sibling != nullptr)
+                    {
+                        sibling->color = node->parent->color;
+                        node->parent->color = BLACK;
+                        if (sibling->right != nullptr)
+                            sibling->right->color = BLACK;
+                        rotateLeft(node->parent);
+                    }
                     node = root;
                 }
             }
             else
             {
                 Node *sibling = node->parent->left;
-                if (sibling->color == RED)
+                
+                if (sibling != nullptr && sibling->color == RED)
                 {
                     sibling->color = BLACK;
                     node->parent->color = RED;
                     rotateRight(node->parent);
                     sibling = node->parent->left;
                 }
-                if ((sibling->left == nullptr || sibling->left->color == BLACK) && (sibling->right == nullptr || sibling->right->color == BLACK))
+
+                if (sibling != nullptr &&
+                    (sibling->left == nullptr || sibling->left->color == BLACK) &&
+                    (sibling->right == nullptr || sibling->right->color == BLACK))
                 {
                     sibling->color = RED;
                     node = node->parent;
                 }
                 else
                 {
-                    if (sibling->left == nullptr || sibling->left->color == BLACK)
+                    if (sibling != nullptr && (sibling->left == nullptr || sibling->left->color == BLACK))
                     {
                         if (sibling->right != nullptr)
                             sibling->right->color = BLACK;
@@ -207,17 +219,24 @@ private:
                         rotateLeft(sibling);
                         sibling = node->parent->left;
                     }
-                    sibling->color = node->parent->color;
-                    node->parent->color = BLACK;
-                    if (sibling->left != nullptr)
-                        sibling->left->color = BLACK;
-                    rotateRight(node->parent);
+
+                    if (sibling != nullptr)
+                    {
+                        sibling->color = node->parent->color;
+                        node->parent->color = BLACK;
+                        if (sibling->left != nullptr)
+                            sibling->left->color = BLACK;
+                        rotateRight(node->parent);
+                    }
                     node = root;
                 }
             }
         }
-        node->color = BLACK;
+
+        if (node != nullptr)
+            node->color = BLACK;  // Ensure the final node is black
     }
+
 
     // Utility function: Find Node with Minimum Value
     Node *minValueNode(Node *&node)
@@ -405,6 +424,8 @@ public:
         {
             fixDelete(x);
         }
+        Node *curr = (y != nullptr) ? y : x;
+        propagateMax(curr);
     }
 
     // Public function: Print the Interval Tree (Red-Black Tree)
@@ -457,7 +478,26 @@ int main()
 
     rbtree.checkMaxProperty(rbtree.root);
     rbtree.printTree();
-    
+
+    // Inserting values into Red-Black Tree
+    for (int i = 15; i < 20; i++){
+        rbtree.remove({i,i+1});
+        rbtree.checkMaxProperty(rbtree.root);
+    }
+
+    rbtree.checkMaxProperty(rbtree.root);
+    rbtree.printTree();
+
+    // Inserting values into Red-Black Tree
+    for (int i = 1; i < 5; i++){
+        rbtree.remove({i,i+1});
+        rbtree.checkMaxProperty(rbtree.root);
+    }
+
+    rbtree.checkMaxProperty(rbtree.root);
+    rbtree.printTree();
+
+
     // Deleting nodes from Red-Black Tree
     // std::cout << "After deleting 18:" << std::endl;
     //rbtree.remove(18);
