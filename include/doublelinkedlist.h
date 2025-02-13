@@ -9,38 +9,36 @@ class RefLinkedList
     private:
         RefNode* head;
         RefNode* tail;
+        int size;
 
     public:
-        RefLinkedList() : head(nullptr), tail(nullptr) {}
+        RefLinkedList() : size(0), head(nullptr), tail(nullptr) {}
 
         ~RefLinkedList() {
             while (head != nullptr) {
                 RefNode* temp = head;
-                head = head->next;
+                head = head->forward;
                 delete temp;
             }
         }
 
-        // Insert at the front
-        RefNode* push_front(int value) {
-            RefNode* newNode = new RefNode(value);
-            if (!head) {
-                head = tail = newNode;
-            } else {
-                newNode->next = head;
-                head->prev = newNode;
-                head = newNode;
-            }
-            return newNode;
+        RefNode* getHead(){ return head; }
+        RefNode* getTail(){ return tail; }
+
+        // Get size of reference
+        int getSize(){
+            return size;
         }
 
         // Insert at the back
         RefNode* push_back(int value) {
             RefNode* newNode = new RefNode(value);
+            newNode->pos = ++size - 1; // Updates size but node pos zero-index
             if (!tail) {
                 head = tail = newNode;
             } else {
                 tail->next = newNode;
+                tail->forward = newNode;
                 newNode->prev = tail;
                 tail = newNode;
             }
@@ -52,10 +50,52 @@ class RefLinkedList
         {
             left->val = val;
             right->deleted = true;
-            right->prev = left;
-            if (!right->next){
+            right->prev = left;   
+            if (right->next != nullptr){
+                left->next = right->next;
                 right->next->prev = left;
             }
+        }
+
+        // // Find position in reference
+        // RefNode* findPos(int pos)
+        // {
+        //     RefNode* ref_elem = head;
+        //     while (ref_elem != nullptr)
+        //     {
+        //         if (ref_elem->pos == pos)
+        //             return ref_elem;
+        //         else
+        //             ref_elem = ref_elem->next;
+        //     }   
+        //     return nullptr;
+        // }
+
+        // If the phrase endpoint on ref is deleted, 
+        // then find the new ref endpoint
+        RefNode* findNearestRef(RefNode* endpoint) 
+        {
+            if (endpoint == nullptr){
+                return nullptr;
+            }
+            if (!(endpoint->deleted))
+                return endpoint;
+            else{
+                while(endpoint->deleted){
+                    endpoint = endpoint->prev;
+                }
+                return endpoint;
+            }
+        }
+
+        // If we need to find the forward adjacent RefNode
+        RefNode* findForwardRef(RefNode* ref_elem)
+        {
+            ref_elem = ref_elem->next;
+            while (ref_elem != nullptr && ref_elem->deleted){
+                ref_elem = ref_elem->next;
+            }
+            return ref_elem;
         }
 
         void printForward() const {
@@ -94,9 +134,54 @@ class PhraseLinkedList
             }
         }
 
+        PhraseNode* getHead(){ return head; }
+        PhraseNode* getTail(){ return tail; }
+
+        // Insert before specified PhraseNode
+        PhraseNode* insert(PhraseNode* nextNode, std::list<unsigned int> ilist)
+        {
+            if (!nextNode) return nullptr; // Invalid node
+            PhraseNode* newNode = new PhraseNode(ilist);
+            newNode->next = nextNode;
+            newNode->prev = nextNode->prev;
+            if (nextNode->prev) {
+                nextNode->prev->next = newNode;
+            } else {
+                head = newNode; 
+            }
+            nextNode->prev = newNode;
+            return newNode;
+        }
+
+        // Delete at specified PhraseNode
+        PhraseNode* remove(PhraseNode* currNode) 
+        {
+            if (!currNode) return nullptr; // Invalid node
+
+            if (currNode->prev) {
+                currNode->prev->next = currNode->next;
+            } else {
+                head = currNode->next; // Update head if removing the first node
+            }
+
+            if (currNode->next) {
+                currNode->next->prev = currNode->prev;
+            } else {
+                tail = currNode->prev; // Update tail if removing the last node
+            }
+
+            PhraseNode* prevNode = currNode->prev; // Store previous node before deleting
+            PhraseNode* forwardNode = currNode->next; // Store previous node before deleting
+            delete currNode;
+            if (prevNode != nullptr)
+                return prevNode; // Return the prev node to allow easy iteration
+            else
+                return forwardNode; // If prev node is nullptr then give the next node
+        }
+
         // Insert at the front
-        PhraseNode* push_front(std::string value) {
-            PhraseNode* newNode = new PhraseNode(value);
+        PhraseNode* push_front(std::list<unsigned int> ilist) {
+            PhraseNode* newNode = new PhraseNode(ilist);
             if (!head) {
                 head = tail = newNode;
             } else {
@@ -108,8 +193,8 @@ class PhraseLinkedList
         }
 
         // Insert at the front
-        PhraseNode* push_front(RefNode* lrange, RefNode* rrange) {
-            PhraseNode* newNode = new PhraseNode(lrange, rrange);
+        PhraseNode* push_front(RefNode* lnode, RefNode* rnode) {
+            PhraseNode* newNode = new PhraseNode(lnode, rnode);
             if (!head) {
                 head = tail = newNode;
             } else {
@@ -121,8 +206,8 @@ class PhraseLinkedList
         }
 
         // Insert at the back
-        PhraseNode* push_back(std::string value) {
-            PhraseNode* newNode = new PhraseNode(value);
+        PhraseNode* push_back(std::list<unsigned int> ilist) {
+            PhraseNode* newNode = new PhraseNode(ilist);
             if (!tail) {
                 head = tail = newNode;
             } else {
@@ -134,8 +219,8 @@ class PhraseLinkedList
         }
 
          // Insert at the back
-        PhraseNode* push_back(RefNode* lrange, RefNode* rrange) {
-            PhraseNode* newNode = new PhraseNode(lrange, rrange);
+        PhraseNode* push_back(RefNode* lnode, RefNode* rnode) {
+            PhraseNode* newNode = new PhraseNode(lnode, rnode);
             if (!tail) {
                 head = tail = newNode;
             } else {
@@ -144,24 +229,6 @@ class PhraseLinkedList
                 tail = newNode;
             }
             return newNode;
-        }
-
-        void printForward() const {
-            PhraseNode* temp = head;
-            while (temp != nullptr) {
-                std::cout << temp->content << " ";
-                temp = temp->next;
-            }
-            std::cout << std::endl;
-        }
-
-        void printBackward() const {
-            PhraseNode* temp = tail;
-            while (temp != nullptr) {
-                std::cout << temp->content << " ";
-                temp = temp->prev;
-            }
-            std::cout << std::endl;
         }
 };
 
