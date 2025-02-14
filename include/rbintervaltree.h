@@ -49,6 +49,7 @@ class RBIntervalTree
         ~RBIntervalTree();
         void insert(std::pair<int, int> interval, T data);
         void remove(std::pair<int, int> interval, T data);
+        void clear();
         void printTree();
         std::vector<T> findContained(std::pair<int, int> spair);
         bool checkProperty(Node* node);
@@ -60,7 +61,7 @@ RBIntervalTree<T>::Node::Node(std::pair<int, int> interval, T value)
 
 // Utility function: Left Rotation
 template <typename T>
-void RBIntervalTree<T>::rotateLeft(Node *&node)
+void RBIntervalTree<T>::rotateLeft(typename RBIntervalTree<T>::Node *&node)
 {
     Node *child = node->right;
     node->right = child->left;
@@ -83,7 +84,7 @@ void RBIntervalTree<T>::rotateLeft(Node *&node)
 
 // Utility function: Right Rotation
 template <typename T>
-void RBIntervalTree<T>::rotateRight(Node *&node)
+void RBIntervalTree<T>::rotateRight(typename RBIntervalTree<T>::Node *&node)
 {
     Node *child = node->left;
     node->left = child->right;
@@ -105,7 +106,7 @@ void RBIntervalTree<T>::rotateRight(Node *&node)
 
 // Utility function: Fixing Insertion Violation
 template <typename T>
-void RBIntervalTree<T>::fixInsert(Node *&node)
+void RBIntervalTree<T>::fixInsert(typename RBIntervalTree<T>::Node *&node)
 {
     Node *parent = nullptr;
     Node *grandparent = nullptr;
@@ -171,7 +172,7 @@ void RBIntervalTree<T>::fixInsert(Node *&node)
 
 // Utility function: Fixing Deletion Violation
 template <typename T>
-void RBIntervalTree<T>::fixDelete(Node *&node)
+void RBIntervalTree<T>::fixDelete(typename RBIntervalTree<T>::Node *&node)
 {
     while (node != root && node != nullptr && node->color == BLACK)
     {
@@ -265,7 +266,7 @@ void RBIntervalTree<T>::fixDelete(Node *&node)
 
 // Utility function: Find Node with Minimum Value
 template <typename T>
-RBIntervalTree<T>::Node* RBIntervalTree<T>::minValueNode(Node *&node)
+typename RBIntervalTree<T>::Node* RBIntervalTree<T>::minValueNode(typename RBIntervalTree<T>::Node *&node)
 {
     Node *current = node;
     while (current->left != nullptr)
@@ -275,7 +276,7 @@ RBIntervalTree<T>::Node* RBIntervalTree<T>::minValueNode(Node *&node)
 
 // Utility function: Transplant nodes in IntervalTree (Red-Black Tree)
 template <typename T>
-void RBIntervalTree<T>::transplant(Node *&root, Node *&u, Node *&v)
+void RBIntervalTree<T>::transplant(typename RBIntervalTree<T>::Node *&root, typename RBIntervalTree<T>::Node *&u, typename RBIntervalTree<T>::Node *&v)
 {
     if (u->parent == nullptr)
         root = v;
@@ -289,7 +290,7 @@ void RBIntervalTree<T>::transplant(Node *&root, Node *&u, Node *&v)
 
 // Utility function: Helper to print IntervalTree (Red-Black Tree)
 template <typename T>
-void RBIntervalTree<T>::printHelper(Node *root, std::string indent, bool last)
+void RBIntervalTree<T>::printHelper(typename RBIntervalTree<T>::Node *root, std::string indent, bool last)
 {
     if (root != nullptr)
     {
@@ -313,7 +314,7 @@ void RBIntervalTree<T>::printHelper(Node *root, std::string indent, bool last)
 
 // Utility function: Delete all nodes in the IntervalTree (Red-Black Tree)
 template <typename T>
-void RBIntervalTree<T>::deleteTree(Node *node)
+void RBIntervalTree<T>::deleteTree(typename RBIntervalTree<T>::Node *node)
 {
     if (node != nullptr)
     {
@@ -325,7 +326,7 @@ void RBIntervalTree<T>::deleteTree(Node *node)
 
 // Utility Function: Update the max and min value after insertion or deletion
 template <typename T>
-void RBIntervalTree<T>::update(Node *node)
+void RBIntervalTree<T>::update(typename RBIntervalTree<T>::Node *node)
 {
     if (node)
     {
@@ -344,7 +345,7 @@ void RBIntervalTree<T>::update(Node *node)
 
 // Utility Function: Propagate max and min value to parent
 template <typename T>
-void RBIntervalTree<T>::propagate(Node *node)
+void RBIntervalTree<T>::propagate(typename RBIntervalTree<T>::Node *node)
 {
     while (node != nullptr)
     {
@@ -355,7 +356,7 @@ void RBIntervalTree<T>::propagate(Node *node)
 
 // Utility Function for findContained
 template <typename T>
-void RBIntervalTree<T>::checkNode(std::pair<int,int>& spair, Node*& node)
+void RBIntervalTree<T>::checkNode(std::pair<int,int>& spair, typename RBIntervalTree<T>::Node*& node)
 {
     if (spair.first >= node->low && spair.second <= node->high){
         returnValues.emplace_back(node->data);
@@ -375,6 +376,13 @@ RBIntervalTree<T>::RBIntervalTree() : root(nullptr){}
 // Destructor: Delete Interval Tree (Red-Black Tree)
 template <typename T>
 RBIntervalTree<T>::~RBIntervalTree() { deleteTree(root); }
+
+// Public function: Clear the tree.
+template <typename T>
+void RBIntervalTree<T>::clear() {
+    deleteTree(root);  // Call the helper function to recursively delete nodes
+    root = nullptr;    // After deletion, set root to nullptr
+}
 
 // Public function: Insert a value into IntervalTree (Red-Black Tree)
 template <typename T>
@@ -502,7 +510,7 @@ std::vector<T> RBIntervalTree<T>::findContained(std::pair<int,int> spair)
 
 // Public function: Checks if min and max property of tree are maintained
 template <typename T> 
-bool RBIntervalTree<T>::checkProperty(Node *node)
+bool RBIntervalTree<T>::checkProperty(typename RBIntervalTree<T>::Node *node)
 {
     if (node == nullptr)
         return true;
