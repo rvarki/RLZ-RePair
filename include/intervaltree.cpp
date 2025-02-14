@@ -2,6 +2,7 @@
 // Modified from Geeks for Geeks RB-Tree using C++ (https://www.geeksforgeeks.org/red-black-tree-in-cpp/)
 
 #include <iostream>
+#include <vector>
 
 // Enumeration for colors of nodes in Interval Tree (Red-Black Tree)
 enum Color
@@ -21,15 +22,16 @@ private:
         int low;
         int high;
         int max;
+        int min;
         T data;
         Color color;
         Node *parent;
         Node *left;
         Node *right;
 
-        // Constructor to initialize node with low and color
+        // Constructor with data
         Node(std::pair<int, int> interval, T value)
-            : low(interval.first), high(interval.second), max(interval.second), data(value), color(RED), parent(nullptr), left(nullptr), right(nullptr)
+            : low(interval.first), high(interval.second), min(interval.first), max(interval.second), data(value), color(RED), parent(nullptr), left(nullptr), right(nullptr)
         {
         }
     };
@@ -53,9 +55,9 @@ private:
         child->left = node;
         node->parent = child;
         // Fix max values
-        updateMax(node);   // First update the original node
-        updateMax(child);  // Then update the new subtree root
-        propagateMax(child->parent);  // Ensure correctness for ancestors
+        update(node);   // First update the original node
+        update(child);  // Then update the new subtree root
+        propagate(child->parent);  // Ensure correctness for ancestors
     }
 
     // Utility function: Right Rotation
@@ -74,9 +76,9 @@ private:
             node->parent->right = child;
         child->right = node;
         node->parent = child;
-        updateMax(node);   // First update the original node
-        updateMax(child);  // Then update the new subtree root
-        propagateMax(child->parent);  // Ensure correctness for ancestors
+        update(node);   // First update the original node
+        update(child);  // Then update the new subtree root
+        propagate(child->parent);  // Ensure correctness for ancestors
     }
 
     // Utility function: Fixing Insertion Violation
@@ -277,7 +279,7 @@ private:
                 indent += "|  ";
             }
             std::string sColor = (root->color == RED) ? "RED" : "BLACK";
-            std::cout << "[" << root->low << "," << root->high << "]" << " data: " << root->data << ", Max val: " << root->max << " (" << sColor << ")" << std::endl;
+            std::cout << "[" << root->low << "," << root->high << "]" << " data: " << root->data << ", Max val: " << root->max << ", Min val: " << root->min << " (" << sColor << ")" << std::endl;
             printHelper(root->left, indent, false);
             printHelper(root->right, indent, true);
         }
@@ -294,28 +296,50 @@ private:
         }
     }
 
-    // Utility Function: Update the max value after insertion or deletion
-    void updateMax(Node *node)
+    // Utility Function: Update the max and min value after insertion or deletion
+    void update(Node *node)
     {
         if (node)
         {
             node->max = node->high;
-            if (node->left)
+            node->min = node->low;
+            if (node->left){
                 node->max = std::max(node->max, node->left->max);
-            if (node->right)
+                node->min = std::min(node->min, node->left->min);
+            }
+            if (node->right){
                 node->max = std::max(node->max, node->right->max);
+                node->min = std::min(node->min, node->right->min);
+            }
         }
     }
 
-    // Utility Function: Propagate max value to parent
-    void propagateMax(Node *node)
+    // Utility Function: Propagate max and min value to parent
+    void propagate(Node *node)
     {
         while (node != nullptr)
         {
-            updateMax(node);
+            update(node);
             node = node->parent;
         }
     }
+
+    // Utility Function for findContained
+    void checkNode(std::pair<int,int>& spair, Node*& node)
+    {
+        if (spair.first >= node->low && spair.second <= node->high){
+            returnValues.emplace_back(node->data);
+        }
+        if (node->left != nullptr && node->left->min <= spair.first && node->left->max >= spair.second){
+            checkNode(spair, node->left);
+        }
+        if (node->right != nullptr && node->right->min <= spair.first && node->right->max >= spair.second){
+            checkNode(spair, node->right);
+        }
+    }
+
+    // findContained values returned
+    std::vector<T> returnValues;
 
 public:
     Node *root; // Root of the Interval Tree (Red-Black Tree)
@@ -353,11 +377,11 @@ public:
             parent->right = node;
         
         fixInsert(node);
-        propagateMax(temp);
+        propagate(temp);
     }
 
     // Public function: Remove a value from IntervalTree (Red-Black Tree)
-    void remove(std::pair<int, int> interval)
+    void remove(std::pair<int, int> interval, T data)
     {
         Node *node = root;
         Node *z = nullptr;
@@ -365,7 +389,7 @@ public:
         Node *y = nullptr;
         while (node != nullptr)
         {
-            if (node->low == interval.first)
+            if (node->low == interval.first && node->high == interval.second && node->data == data)
             {
                 z = node;
             }
@@ -425,7 +449,7 @@ public:
             fixDelete(x);
         }
         Node *curr = (y != nullptr) ? y : x;
-        propagateMax(curr);
+        propagate(curr);
     }
 
     // Public function: Print the Interval Tree (Red-Black Tree)
@@ -440,7 +464,16 @@ public:
         }
     }
 
-    bool checkMaxProperty(Node *node)
+    // Public function: Find all intervals containing pair    
+    std::vector<T> findContained(std::pair<int,int> spair)
+    {
+        returnValues.clear();
+        Node* node = root;
+        checkNode(spair, root);
+        return returnValues;
+    }
+
+    bool checkProperty(Node *node)
     {
         if (node == nullptr)
             return true;
@@ -460,8 +493,23 @@ public:
             return false;
         }
 
+        // Compute expected max value
+        int expectedMin = node->low;
+        if (node->left)
+            expectedMin = std::min(expectedMin, node->left->min);
+        if (node->right)
+            expectedMin = std::min(expectedMin, node->right->min);
+
+        // Check if the max property holds for the current node
+        if (node->min != expectedMin)
+        {
+            std::cout << "Min property violated at node [" << node->low << ", " << node->high << "]"
+                    << " Expected: " << expectedMin << ", Found: " << node->min << std::endl;
+            return false;
+        }
+
         // Recursively check left and right subtrees
-        return checkMaxProperty(node->left) && checkMaxProperty(node->right);
+        return checkProperty(node->left) && checkProperty(node->right);
     }
 };
 
@@ -471,45 +519,35 @@ int main()
     RBIntervalTree<int> rbtree;
 
     // Inserting values into Red-Black Tree
-    for (int i = 1; i < 20; i++){
-        rbtree.insert({i,i+1},i+2);
-        rbtree.checkMaxProperty(rbtree.root);
-    }
-
-    rbtree.checkMaxProperty(rbtree.root);
-    rbtree.printTree();
-
-    // Inserting values into Red-Black Tree
-    for (int i = 15; i < 20; i++){
-        rbtree.remove({i,i+1});
-        rbtree.checkMaxProperty(rbtree.root);
-    }
-
-    rbtree.checkMaxProperty(rbtree.root);
-    rbtree.printTree();
-
-    // Inserting values into Red-Black Tree
     for (int i = 1; i < 5; i++){
-        rbtree.remove({i,i+1});
-        rbtree.checkMaxProperty(rbtree.root);
+        rbtree.insert({i,i+10},i+2);
+        rbtree.checkProperty(rbtree.root);
     }
 
-    rbtree.checkMaxProperty(rbtree.root);
+    rbtree.checkProperty(rbtree.root);
     rbtree.printTree();
 
+    // Inserting values into Red-Black Tree
+    for (int i = 3; i < 7; i++){
+        rbtree.insert({i,i+11},i+2);
+        rbtree.checkProperty(rbtree.root);
+    }
 
-    // Deleting nodes from Red-Black Tree
-    // std::cout << "After deleting 18:" << std::endl;
-    //rbtree.remove(18);
-    //rbtree.printTree();
+    rbtree.checkProperty(rbtree.root);
+    rbtree.printTree();
 
-    // std::cout << "After deleting 11:" << std::endl;
-    // rbtree.remove(11);
-    // rbtree.printTree();
+    // Removing values into Red-Black Tree
+    for (int i = 3; i < 5; i++){
+        rbtree.remove({i,i+11},i+2);
+        rbtree.checkProperty(rbtree.root);
+    }
 
-    // std::cout << "After deleting 3:" << std::endl;
-    // rbtree.remove(3);
-    // rbtree.printTree();
+    rbtree.checkProperty(rbtree.root);
+    rbtree.printTree();
+
+    std::vector<int> results;
+    results = rbtree.findContained(std::pair<int,int>{3,14});
+    std::cout << results.size() << " intervals contain (3, 13)" << std::endl;
 
     return 0;
 }
