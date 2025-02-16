@@ -13,7 +13,7 @@
 #include <vector> 
 #include <deque>
 #include "repair.h"
-#include "IntervalTree.h"
+#include "rbintervaltree.h"
 #include "doublelinkedlist.h"
 #include <chrono>
 
@@ -74,8 +74,7 @@ std::unordered_map<std::pair<int, int>, std::deque<int>, pair_int_hash> hash_ran
 PhraseLinkedList plist;
 
 // Interval Tree for the non-explicit phrases
-typedef IntervalTree<int, PhraseNode*> ITree;
-ITree phrase_tree;
+RBIntervalTree<PhraseNode*> phrase_tree;
 
 // Timing information
 std::chrono::duration<double> prepare_ref_time{0.0};
@@ -476,26 +475,16 @@ void populatePhrases(std::ifstream& pfile)
 
 void buildIntervalTree()
 {
-    ITree::interval_vector phrase_intervals;
     PhraseNode* curr_phrase = plist.getHead();
     while(curr_phrase != nullptr)
     {
         if (!curr_phrase->exp){
-            phrase_intervals.push_back(ITree::interval(rlist.findNearestRef(curr_phrase->lnode)->pos, 
-                                                        rlist.findNearestRef(curr_phrase->rnode)->pos, 
-                                                        curr_phrase));
+            int lRange = rlist.findNearestRef(curr_phrase->lnode)->pos;
+            int rRange = rlist.findNearestRef(curr_phrase->rnode)->pos;
+            phrase_tree.insert({lRange, rRange}, curr_phrase);
         }
         curr_phrase = curr_phrase->next;
     }
-    
-    ITree temp_tree(std::move(phrase_intervals));
-    phrase_tree = temp_tree;
-
-    // Some debug test
-    // ITree::interval_vector phrase_results;
-    // phrase_results = phrase_tree.findContained(0,4);
-    // spdlog::info("Results of finding (0,4): {}", phrase_results.size());
-    
 }
 
 /**
@@ -852,19 +841,23 @@ void repair(std::ofstream& R, std::ofstream& C)
                 }  
                 
                 // Create Interval Tree
-                ITree::interval_vector phrase_results;
+                std::vector<PhraseNode*> phrase_results;
                 spdlog::trace("Pair to replace: ({},{})", lref->pos, rref->pos);
-                phrase_results = phrase_tree.findContained(lref->pos,rref->pos); // Fully contained within interval
+                phrase_results = phrase_tree.findContained({lref->pos,rref->pos}); // Fully contained within interval
                 spdlog::trace("{} non-explicit phrases contain the pair to replace.", phrase_results.size());
                 for (int i = 0; i < phrase_results.size(); i++)
                 {
-                    PhraseNode* nexp_phrase = phrase_results[i].value;
+                    PhraseNode* nexp_phrase = phrase_results[i];
                     int leftElem =  lref->val;
                     int rightElem = rref->val;
                     int leftleftElem;
                     int rightrightElem;
+
+                    int lRange = rlist.findNearestRef(phrase_results[i]->lnode)->pos;
+                    int rRange = rlist.findNearestRef(phrase_results[i]->rnode)->pos;
+
                     // If range fully contained within range then we can do the decrease and increase frequencies
-                    if (phrase_results[i].start != lref->pos && phrase_results[i].stop != rref->pos)
+                    if (lRange != lref->pos && rRange != rref->pos)
                     {
                         leftleftElem = rlist.findNearestRef(lref->prev)->val;
                         rightrightElem = rlist.findForwardRef(rref)->val;
@@ -875,7 +868,7 @@ void repair(std::ofstream& R, std::ofstream& C)
 
                     }
                     // If range touches the edges
-                    else if (phrase_results[i].start == lref->pos && phrase_results[i].stop == rref->pos)
+                    else if (lRange == lref->pos && rRange == rref->pos)
                     {
                         if (nexp_phrase->prev != nullptr && nexp_phrase->prev->exp){
                             leftleftElem = nexp_phrase->prev->content.back();
@@ -900,7 +893,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                         }
                     }
                     // If range touches left edge, we can only decrease the left pair at the moment.
-                    else if (phrase_results[i].start == lref->pos &&  phrase_results[i].stop != rref->pos)
+                    else if (lRange == lref->pos && rRange != rref->pos)
                     {
                         if (nexp_phrase->prev != nullptr && nexp_phrase->prev->exp){
                             leftleftElem = nexp_phrase->prev->content.back();
@@ -918,7 +911,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                         increaseFrequency(n, rightrightElem);
                     }
                     // If range touches right edge
-                    else if (phrase_results[i].start != lref->pos &&  phrase_results[i].stop == rref->pos)
+                    else if (lRange != lref->pos && rRange == rref->pos)
                     {
                         leftleftElem = rlist.findNearestRef(lref->prev)->val;
                         decreaseFrequency(leftleftElem, leftElem);
@@ -1121,6 +1114,9 @@ void repair(std::ofstream& R, std::ofstream& C)
 
         // Update n
         n++;
+
+        // Clear the tree
+        phrase_tree.clear();
 
         // Debug
         if (verbosity == 2){
