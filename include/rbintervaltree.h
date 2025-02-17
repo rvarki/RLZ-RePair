@@ -43,6 +43,9 @@ class RBIntervalTree
         void update(Node* node);
         void propagate(Node* node);
         void checkNode(std::pair<int, int>& spair, Node*& node);
+        bool isBST(Node* root, Node* minNode, Node* maxNode);
+        bool validateRB(Node* root, int blackHeight);
+
     
     public:
         RBIntervalTree();
@@ -53,6 +56,7 @@ class RBIntervalTree
         void printTree();
         std::vector<T> findContained(std::pair<int, int> spair);
         bool checkProperty(Node* node);
+        bool isValidRB();
 };
 
 template <typename T>
@@ -369,6 +373,60 @@ void RBIntervalTree<T>::checkNode(std::pair<int,int>& spair, typename RBInterval
     }
 }
 
+// Utility Function: Checks if the Interval Tree (Red-Black Tree) is a valid BST 
+template <typename T>
+bool RBIntervalTree<T>::isBST(typename RBIntervalTree<T>::Node* node, typename RBIntervalTree<T>::Node* minNode, typename RBIntervalTree<T>::Node* maxNode)
+{
+    if (!node) return true;
+    // If the low value of the currNode is same or greater than the low value of the minNode
+    // or the low value of the currNode is less than the low value of the maxNode
+    if (minNode != nullptr && node->low >= minNode->low || maxNode != nullptr && node->low < maxNode->low){
+        std::cout << "NOT A VALID BST!!!" << std::endl;
+        return false;
+    }
+    return isBST(node->left, minNode, node) && isBST(node->right, node, maxNode);
+}
+
+// Utility Function: Checks Red-Black properties of the Interval Tree (Red-Black Tree)
+template <typename T>
+bool RBIntervalTree<T>::validateRB(typename RBIntervalTree<T>::Node* node, int blackHeight)
+{
+    // If empty tree then automatically valid
+    if (node == nullptr){
+        blackHeight = 1;
+        return true;
+    }
+    // Checks if root is black
+    if (node->parent == nullptr && node->color != BLACK){
+        std::cout << "ROOT IS NOT BLACK!" << std::endl;
+    }
+    // Checks if there are two consecutive red nodes
+    if (node->color == RED){
+        if (node->left != nullptr && node->left->color == RED || node->right != nullptr && node->right->color == RED){
+            std::cout << "RED NODE HAS A RED CHILD" << std::endl;
+            return false;
+        }
+    }
+    // Keep track of the number of black nodes in the left and right subtrees
+    int leftBlackHeight = 0;
+    int rightBlackHeight = 0;
+
+    if (!validateRB(node->left, leftBlackHeight) || !validateRB(node->right, rightBlackHeight)){
+        return false;
+    }
+
+    // Ensure all paths have the same black height
+    if (leftBlackHeight != rightBlackHeight) {
+        std::cout << "BLACK HEIGHT MISMATCH!" << std::endl;
+        return false;
+    }
+    // Compute the black height for the current node
+    blackHeight = leftBlackHeight + (node->color == BLACK ? 1 : 0);
+
+    return true;
+}
+
+
 // Constructor: Initialize IntervalTree (Red-Black Tree)
 template <typename T>
 RBIntervalTree<T>::RBIntervalTree() : root(nullptr){}
@@ -548,5 +606,14 @@ bool RBIntervalTree<T>::checkProperty(typename RBIntervalTree<T>::Node *node)
     // Recursively check left and right subtrees
     return checkProperty(node->left) && checkProperty(node->right);
 }
+
+// Public function: Check if Red Black tree is valid
+template <typename T>
+bool RBIntervalTree<T>::isValidRB()
+{
+    int blackHeight = 0;
+    return isBST(root, nullptr, nullptr) && validateRB(root, blackHeight);
+}
+
 
 #endif // RB_INTERVAL_TREE_H
