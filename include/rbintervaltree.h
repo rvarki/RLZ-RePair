@@ -306,7 +306,7 @@ void RBIntervalTree<T>::printHelper(typename RBIntervalTree<T>::Node *root, std:
             indent += "|  ";
         }
         std::string sColor = (root->color == RED) ? "RED" : "BLACK";
-        std::cout << "[" << root->low << "," << root->high << "]" << " data: " << root->data << ", Max val: " << root->max << ", Min val: " << root->min << " (" << sColor << ")" << std::endl;
+        std::cout << "[" << root->low << "," << root->high << "]" << " Min val: " << root->min << ", Max val: " << root->max << " (" << sColor << ")" << std::endl;
         printHelper(root->left, indent, false);
         printHelper(root->right, indent, true);
     }
