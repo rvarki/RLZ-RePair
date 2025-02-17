@@ -512,33 +512,58 @@ void phraseBoundaries(int left_elem, int right_elem)
         // If there is a next phrase, check the phrase boundaries.
         if (next_phrase != nullptr)
         {
-            // Update the rnode and lnode of both the current and next phrase before doing anything.
-            if (!curr_phrase->exp){
-                curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
-                curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode);
-            }
-            if (!next_phrase->exp){
-                next_phrase->lnode = rlist.findNearestRef(next_phrase->lnode);
-                next_phrase->rnode = rlist.findNearestRef(next_phrase->rnode);
-            }
-            
             // Both phrases not explicit
             if (!(curr_phrase->exp) && !(next_phrase->exp))
             {
-                if (curr_phrase->rnode->val == left_elem && next_phrase->lnode->val == right_elem)
+                if (rlist.findNearestRef(curr_phrase->rnode)->val == left_elem && rlist.findNearestRef(next_phrase->lnode)->val == right_elem)
                 {
+                    // Indicates whether a non-explicit phrase got deleted.
+                    bool deleteCurr = false;
+                    bool deleteNext = false;
+
                     std::list<unsigned int> content;
                     content.push_back(left_elem);
                     content.push_back(right_elem);
+
+                    // First remove the offending entries in the tree.
+                    spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                    phrase_tree.remove({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                    spdlog::trace("Removing ({},{}) from tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                    phrase_tree.remove({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
+
+                    // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
+                    curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
+                    curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode);
+                    next_phrase->lnode = rlist.findNearestRef(next_phrase->lnode);
+                    next_phrase->rnode = rlist.findNearestRef(next_phrase->rnode);
+
                     curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode->prev);
                     next_phrase->lnode = rlist.findForwardRef(next_phrase->lnode);
                     plist.insert(next_phrase, content); 
                     // If the current or next phrases are empty we delete
-                    if (curr_phrase->rnode == nullptr || curr_phrase->lnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){ 
+                    if (curr_phrase->rnode == nullptr || curr_phrase->lnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){
+                        deleteCurr = true; 
                         curr_phrase = plist.remove(curr_phrase);
                     }
                     if (next_phrase->rnode == nullptr || next_phrase->lnode == nullptr || next_phrase->lnode->pos > next_phrase->rnode->pos){
+                        deleteNext = true;
                         next_phrase = plist.remove(next_phrase);  
+                    }
+
+                    // Update the tree with the new entries
+                    if (!deleteCurr && !deleteNext){
+                        spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                        phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                        spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                        phrase_tree.insert({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
+                    }
+                    if (deleteCurr){
+                        spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                        phrase_tree.insert({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
+                    }
+                    if (deleteNext){
+                        spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                        phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
                     }
                     continue;
                 }
@@ -546,13 +571,30 @@ void phraseBoundaries(int left_elem, int right_elem)
             // Current phrase not explicit and next phrase explicit
             else if (!(curr_phrase->exp) && (next_phrase->exp))
             {
-                if ((curr_phrase->rnode->val == left_elem) && (next_phrase->content.front() == right_elem))
+                if ((rlist.findNearestRef(curr_phrase->rnode)->val == left_elem) && (next_phrase->content.front() == right_elem))
                 {
+                    // Indicates whether a non-explicit phrase got deleted.
+                    bool deleteCurr = false;
+                    // First remove the offending entry from the tree
+                    spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                    phrase_tree.remove({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+
+                    // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
+                    curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
+                    curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode);
+
                     next_phrase->content.push_front(left_elem);
                     curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode->prev);
                     // If the non-explicit phrase is empty we delete it.
                     if (curr_phrase->rnode == nullptr || curr_phrase->lnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){ 
+                        deleteCurr = true;
                         curr_phrase = plist.remove(curr_phrase);
+                    }
+
+                    // Update the tree with the new entry
+                    if (!deleteCurr){
+                        spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                        phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
                     }
                     continue;
                 }
@@ -560,12 +602,28 @@ void phraseBoundaries(int left_elem, int right_elem)
             // Current phrase explicit and next phrase not explicit
             else if ((curr_phrase->exp) && !(next_phrase->exp))
             {
-                if ((curr_phrase->content.back() == left_elem) && (next_phrase->lnode->val == right_elem))
+                if ((curr_phrase->content.back() == left_elem) && (rlist.findNearestRef(next_phrase->lnode)->val == right_elem))
                 {
+                    // Indicates whether a non-explicit phrase got deleted.
+                    bool deleteNext = false;
+                    // First remove the offending entry from the tree
+                    spdlog::trace("Removing ({},{}) from tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                    phrase_tree.remove({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
+
+                    // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
+                    next_phrase->lnode = rlist.findNearestRef(next_phrase->lnode);
+                    next_phrase->rnode = rlist.findNearestRef(next_phrase->rnode);
+
                     curr_phrase->content.push_back(right_elem);
                     next_phrase->lnode = rlist.findForwardRef(next_phrase->lnode);
                     if (next_phrase->rnode == nullptr || next_phrase->lnode == nullptr || next_phrase->lnode->pos > next_phrase->rnode->pos){
                         next_phrase = plist.remove(next_phrase);
+                    }
+
+                    // Update the tree with the new entry
+                    if (!deleteNext){
+                        spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                        phrase_tree.insert({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
                     }
                     continue;
                 }
@@ -636,15 +694,31 @@ void sourceBoundaries(int left_elem, int right_elem)
                     content.push_back(right_elem);
                     plist.insert(curr_phrase, content);
                 }
-                
+
+                // Indicates whether a non-explicit phrase got deleted.
+                bool deleteCurr = false;
+                // First remove the offending entry from the tree
+                spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                phrase_tree.remove({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+
+                // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
+                curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
+                curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode);
+
                 // Update the information of the current phrase (left node pointer & existence).
                 curr_phrase->lnode = rlist.findForwardRef(curr_phrase->lnode);                    
                 // If non-explicit phrase is empty we delete it
                 if (curr_phrase->lnode == nullptr || curr_phrase->lnode->pos > curr_phrase->rnode->pos){ 
+                    deleteCurr = true;
                     curr_phrase = plist.remove(curr_phrase); // Removes the current phrase and sets the curr phrase to be the previous phrase
-                    continue;
                 }
-                curr_phrase = curr_phrase->prev; // If it gets to here then we need to manually update the curr_phrase for the next iteration to be the previous phrase which should be guaranteed to exist.
+
+                // Update the tree with the new entry
+                if (!deleteCurr){
+                    spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                    phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                }
+
                 continue;
             }
             
@@ -671,12 +745,30 @@ void sourceBoundaries(int left_elem, int right_elem)
                     }
                 }
 
+                // Indicates whether a non-explicit phrase got deleted.
+                bool deleteCurr = false;
+                // First remove the offending entry from the tree
+                spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                phrase_tree.remove({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+
+                // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
+                curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
+                curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode);
+
                 // Update the information of the current phrase (right node pointer & existence).
                 curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode->prev);                       
                 // If non-explicit phrase is empty we delete it
-                if (curr_phrase->rnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){ 
+                if (curr_phrase->rnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){
+                    deleteCurr = true; 
                     curr_phrase = plist.remove(curr_phrase); // Removes the current phrase and sets the curr phrase to be the previous phrase
                 }
+
+                // Update the tree with the new entry
+                if (!deleteCurr){
+                    spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                    phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                }
+
                 continue; // If it gets to here then the next iteration will have the same curr phrase.
             }
         }
@@ -781,6 +873,12 @@ void repair(std::ofstream& R, std::ofstream& C)
         spdlog::error("Error writing map to R file");
     }
 
+    // Build the tree
+    auto build_interval_start = std::chrono::high_resolution_clock::now();
+    buildIntervalTree(); 
+    auto build_interval_end = std::chrono::high_resolution_clock::now();
+    build_interval_time += build_interval_end - build_interval_start;
+
     oid = extractMax(&Heap);
     while (oid != -1)
     {
@@ -819,11 +917,6 @@ void repair(std::ofstream& R, std::ofstream& C)
         {
             std::deque<int> ranges = hash_ranges[max_pair];
 
-            auto build_interval_start = std::chrono::high_resolution_clock::now();
-            buildIntervalTree(); 
-            auto build_interval_end = std::chrono::high_resolution_clock::now();
-            build_interval_time += build_interval_end - build_interval_start;
-
             auto nexp_start = std::chrono::high_resolution_clock::now();
             for (int curr_range : ranges)
             {
@@ -840,7 +933,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                     continue;
                 }  
                 
-                // Create Interval Tree
+                // Query the tree
                 std::vector<PhraseNode*> phrase_results;
                 spdlog::trace("Pair to replace: ({},{})", lref->pos, rref->pos);
                 phrase_results = phrase_tree.findContained({lref->pos,rref->pos}); // Fully contained within interval
@@ -1115,9 +1208,6 @@ void repair(std::ofstream& R, std::ofstream& C)
         // Update n
         n++;
 
-        // Clear the tree
-        phrase_tree.clear();
-
         // Debug
         if (verbosity == 2){
             spdlog::trace("");
@@ -1125,6 +1215,7 @@ void repair(std::ofstream& R, std::ofstream& C)
             printRef();
             printPhraseList();
             printAllRecords();
+            phrase_tree.printTree();
             spdlog::trace("*********************************************");
         }
     }
