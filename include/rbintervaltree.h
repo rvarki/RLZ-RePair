@@ -8,6 +8,7 @@
 #include <vector>
 #include <algorithm>
 #include <utility>
+#include <string>
 
 // Enumeration for colors of nodes in Interval Tree (Red-Black Tree)
 enum Color{ RED, BLACK};
@@ -20,8 +21,9 @@ class RBIntervalTree
         // Structure for a node in IntervalTree (Red-Black Tree)
         struct Node
         {
-            int low, high, min, max;
-            T data;
+            int low, min, max;
+            std::vector<int> highVec;
+            std::vector<T> dataVec;
             Color color;
             Node *parent, *left, *right;
             Node(std::pair<int, int> interval, T value);
@@ -43,7 +45,7 @@ class RBIntervalTree
         void update(Node* node);
         void propagate(Node* node);
         void checkNode(std::pair<int, int>& spair, Node*& node);
-        bool isBST(Node* root, Node* minNode, Node* maxNode);
+        bool isBST(Node* root, std::string message, Node* minNode, Node* maxNode);
         bool validateRB(Node* root, int blackHeight);
 
     
@@ -61,7 +63,7 @@ class RBIntervalTree
 
 template <typename T>
 RBIntervalTree<T>::Node::Node(std::pair<int, int> interval, T value)
-        : low(interval.first), high(interval.second), min(interval.first), max(interval.second), data(value), color(RED), parent(nullptr), left(nullptr), right(nullptr){}
+    : low(interval.first), highVec{interval.second}, min(interval.first), max(interval.second), dataVec{value}, color(RED), parent(nullptr), left(nullptr), right(nullptr){}
 
 // Utility function: Left Rotation
 template <typename T>
@@ -310,7 +312,16 @@ void RBIntervalTree<T>::printHelper(typename RBIntervalTree<T>::Node *root, std:
             indent += "|  ";
         }
         std::string sColor = (root->color == RED) ? "RED" : "BLACK";
-        std::cout << "[" << root->low << "," << root->high << "]" << " Min val: " << root->min << ", Max val: " << root->max << " (" << sColor << ")" << std::endl;
+
+        std::string highValues = "";
+        for (int i = 0; i < root->highVec.size(); i++){
+            highValues += std::to_string(root->highVec[i]);
+            if (i != root->highVec.size() - 1){
+                highValues += ",";
+            }
+        }
+
+        std::cout << "[" << root->low << "," << "(" << highValues << ")" << "]" << " Min val: " << root->min << ", Max val:" << root->max << " (" << sColor << ")" << std::endl;
         printHelper(root->left, indent, false);
         printHelper(root->right, indent, true);
     }
@@ -334,7 +345,7 @@ void RBIntervalTree<T>::update(typename RBIntervalTree<T>::Node *node)
 {
     if (node)
     {
-        node->max = node->high;
+        node->max = *std::max_element(node->highVec.begin(), node->highVec.end());
         node->min = node->low;
         if (node->left){
             node->max = std::max(node->max, node->left->max);
@@ -362,8 +373,15 @@ void RBIntervalTree<T>::propagate(typename RBIntervalTree<T>::Node *node)
 template <typename T>
 void RBIntervalTree<T>::checkNode(std::pair<int,int>& spair, typename RBIntervalTree<T>::Node*& node)
 {
-    if (spair.first >= node->low && spair.second <= node->high){
-        returnValues.emplace_back(node->data);
+    if (spair.first >= node->low){
+        // 'it' is an iterator to high vals in highVec  
+        for (auto it = node->highVec.begin(); it != node->highVec.end(); it++)
+        {
+            if (spair.second <= *it){
+                int dataPos = std::distance(node->highVec.begin(), it);
+                returnValues.emplace_back(node->dataVec[dataPos]);
+            }
+        }
     }
     if (node->left != nullptr && node->left->min <= spair.first && node->left->max >= spair.second){
         checkNode(spair, node->left);
@@ -375,16 +393,16 @@ void RBIntervalTree<T>::checkNode(std::pair<int,int>& spair, typename RBInterval
 
 // Utility Function: Checks if the Interval Tree (Red-Black Tree) is a valid BST 
 template <typename T>
-bool RBIntervalTree<T>::isBST(typename RBIntervalTree<T>::Node* node, typename RBIntervalTree<T>::Node* minNode, typename RBIntervalTree<T>::Node* maxNode)
+bool RBIntervalTree<T>::isBST(typename RBIntervalTree<T>::Node* node, std::string message, typename RBIntervalTree<T>::Node* minNode, typename RBIntervalTree<T>::Node* maxNode)
 {
     if (!node) return true;
-    // If the low value of the currNode is same or greater than the low value of the minNode
-    // or the low value of the currNode is less than the low value of the maxNode
-    if (minNode != nullptr && node->low >= minNode->low || maxNode != nullptr && node->low < maxNode->low){
-        std::cout << "NOT A VALID BST!!!" << std::endl;
+
+    if ((minNode != nullptr && node->low < minNode->low) || (maxNode != nullptr && node->low >= maxNode->low)){
+        std::cout << "BST Violated" << std::endl;
         return false;
-    }
-    return isBST(node->left, minNode, node) && isBST(node->right, node, maxNode);
+    } 
+
+    return isBST(node->left, "left", minNode, node) && isBST(node->right, "right", node, maxNode);
 }
 
 // Utility Function: Checks Red-Black properties of the Interval Tree (Red-Black Tree)
@@ -446,28 +464,45 @@ void RBIntervalTree<T>::clear() {
 template <typename T>
 void RBIntervalTree<T>::insert(std::pair<int, int> interval, T data)
 {
-    Node *node = new Node(interval, data);
-    Node* temp = node;
+    bool exist = false;
     Node *parent = nullptr;
     Node *current = root;
     while (current != nullptr)
     {
         parent = current;
-        if (node->low < current->low)
+        // The low value of the interval could exist in the red black tree already
+        if (interval.first == current->low){
+            exist = true;
+            current->highVec.emplace_back(interval.second);
+            current->dataVec.emplace_back(data);
+            break;
+        }
+        else if (interval.first < current->low){
             current = current->left;
-        else
+        }
+        else{
             current = current->right;
+        }
     }
-    node->parent = parent;
-    if (parent == nullptr)
-        root = node;
-    else if (node->low < parent->low)
-        parent->left = node;
-    else
-        parent->right = node;
-    
-    fixInsert(node);
-    propagate(temp);
+    // If the low value of the interval did not exist in the red black tree already 
+    if (!exist)
+    {
+        Node *node = new Node(interval, data);
+        Node* temp = node;
+        node->parent = parent;
+        if (parent == nullptr)
+            root = node;
+        else if (node->low < parent->low)
+            parent->left = node;
+        else
+            parent->right = node;
+        
+        fixInsert(node);
+        propagate(temp);
+    }
+    else{
+        propagate(current);
+    }
 }
 
 // Public function: Remove a value from IntervalTree (Red-Black Tree)
@@ -480,15 +515,46 @@ void RBIntervalTree<T>::remove(std::pair<int, int> interval, T data)
     Node *y = nullptr;
     while (node != nullptr)
     {
-        if (node->low == interval.first && node->high == interval.second && node->data == data)
+        // If node low value is present 
+        if (node->low == interval.first)
         {
-            z = node;
+            // Get the iterator of the data value if it exists
+            auto dataIt = std::find(node->dataVec.begin(), node->dataVec.end(), data);
+            if (dataIt != node->dataVec.end())
+            {
+                // Calculate the position in the vector
+                int dataPos = std::distance(node->dataVec.begin(), dataIt);
+                // The high value should exist in this position if the other two conditions are true
+                if (interval.second == node->highVec[dataPos]){
+                    // Erase the value from both highVec and dataVec
+                    node->highVec.erase(node->highVec.begin() + dataPos);
+                    node->dataVec.erase(dataIt);
+                    if (node->highVec.size() != node->dataVec.size()){
+                        std::cout << "Node content is out of sync" << std::endl;
+                    }
+                    // If size is zero then delete from the tree
+                    if (node->highVec.size() == 0 && node->dataVec.size() == 0){
+                        z = node;
+                        break;
+                    }
+                    // Update the tree if needed and exit
+                    else{
+                        propagate(node);
+                        return;
+                    }
+                }
+                else{
+                    std::cout << "Something is wrong. Data is present but not the corresponding high value" << std::endl;
+                }
+            }
         }
 
+        // If node value is less than or equal then go right.
         if (node->low <= interval.first)
         {
             node = node->right;
         }
+        // Otherwise go left.
         else
         {
             node = node->left;
@@ -612,7 +678,7 @@ template <typename T>
 bool RBIntervalTree<T>::isValidRB()
 {
     int blackHeight = 0;
-    return isBST(root, nullptr, nullptr) && validateRB(root, blackHeight);
+    return isBST(root, "Root", nullptr, nullptr) && validateRB(root, blackHeight);
 }
 
 
