@@ -547,10 +547,13 @@ void RBIntervalTree<T>::remove(std::pair<int, int> interval, T data)
                     std::cout << "Something is wrong. Data is present but not the corresponding high value" << std::endl;
                 }
             }
+            else{
+                std::cout << "Data does not exist in tree" << std::endl;
+            }
         }
 
         // If node value is less than or equal then go right.
-        if (node->low <= interval.first)
+        else if (node->low < interval.first)
         {
             node = node->right;
         }
