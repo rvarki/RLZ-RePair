@@ -617,6 +617,7 @@ void phraseBoundaries(int left_elem, int right_elem)
                     curr_phrase->content.push_back(right_elem);
                     next_phrase->lnode = rlist.findForwardRef(next_phrase->lnode);
                     if (next_phrase->rnode == nullptr || next_phrase->lnode == nullptr || next_phrase->lnode->pos > next_phrase->rnode->pos){
+                        deleteNext = true;
                         next_phrase = plist.remove(next_phrase);
                     }
 
