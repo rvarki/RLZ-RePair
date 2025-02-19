@@ -557,11 +557,11 @@ void phraseBoundaries(int left_elem, int right_elem)
                         spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
                         phrase_tree.insert({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
                     }
-                    if (deleteCurr){
+                    else if (deleteCurr && !deleteNext){
                         spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
                         phrase_tree.insert({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
                     }
-                    if (deleteNext){
+                    else if (!deleteCurr && deleteNext){
                         spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
                         phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
                     }
@@ -1216,7 +1216,7 @@ void repair(std::ofstream& R, std::ofstream& C)
             printRef();
             printPhraseList();
             printAllRecords();
-            phrase_tree.printTree();
+            //phrase_tree.printTree();
             spdlog::trace("*********************************************");
         }
     }
