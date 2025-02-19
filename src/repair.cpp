@@ -84,6 +84,7 @@ std::chrono::duration<double> create_heap_time{0.0};
 std::chrono::duration<double> phrase_boundary_time{0.0};
 std::chrono::duration<double> source_boundary_time{0.0};
 std::chrono::duration<double> build_interval_time{0.0};
+std::chrono::duration<double> update_interval_time{0.0};
 std::chrono::duration<double> nonexplicit_phrase_time{0.0};
 std::chrono::duration<double> explicit_phrase_time{0.0};
 std::chrono::duration<double> hash_range_time{0.0};
@@ -527,9 +528,15 @@ void phraseBoundaries(int left_elem, int right_elem)
 
                     // First remove the offending entries in the tree.
                     spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                    auto update_interval_start = std::chrono::high_resolution_clock::now();
                     phrase_tree.remove({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                    auto update_interval_end = std::chrono::high_resolution_clock::now();
+                    update_interval_time += update_interval_end - update_interval_start;
                     spdlog::trace("Removing ({},{}) from tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                    update_interval_start = std::chrono::high_resolution_clock::now();
                     phrase_tree.remove({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
+                    update_interval_end = std::chrono::high_resolution_clock::now();
+                    update_interval_time += update_interval_end - update_interval_start;
 
                     // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
                     curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
@@ -553,17 +560,29 @@ void phraseBoundaries(int left_elem, int right_elem)
                     // Update the tree with the new entries
                     if (!deleteCurr && !deleteNext){
                         spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                        update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                        update_interval_end = std::chrono::high_resolution_clock::now();
+                        update_interval_time += update_interval_end - update_interval_start;
                         spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                        update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.insert({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
+                        update_interval_end = std::chrono::high_resolution_clock::now();
+                        update_interval_time += update_interval_end - update_interval_start;
                     }
                     else if (deleteCurr && !deleteNext){
                         spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                        update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.insert({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
+                        update_interval_end = std::chrono::high_resolution_clock::now();
+                        update_interval_time += update_interval_end - update_interval_start;
                     }
                     else if (!deleteCurr && deleteNext){
                         spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                        update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                        update_interval_end = std::chrono::high_resolution_clock::now();
+                        update_interval_time += update_interval_end - update_interval_start;
                     }
                     continue;
                 }
@@ -577,7 +596,10 @@ void phraseBoundaries(int left_elem, int right_elem)
                     bool deleteCurr = false;
                     // First remove the offending entry from the tree
                     spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                    auto update_interval_start = std::chrono::high_resolution_clock::now();
                     phrase_tree.remove({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                    auto update_interval_end = std::chrono::high_resolution_clock::now();
+                    update_interval_time += update_interval_end - update_interval_start;
 
                     // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
                     curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
@@ -594,7 +616,10 @@ void phraseBoundaries(int left_elem, int right_elem)
                     // Update the tree with the new entry
                     if (!deleteCurr){
                         spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                        update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                        update_interval_end = std::chrono::high_resolution_clock::now();
+                        update_interval_time += update_interval_end - update_interval_start;
                     }
                     continue;
                 }
@@ -608,7 +633,10 @@ void phraseBoundaries(int left_elem, int right_elem)
                     bool deleteNext = false;
                     // First remove the offending entry from the tree
                     spdlog::trace("Removing ({},{}) from tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                    auto update_interval_start = std::chrono::high_resolution_clock::now();
                     phrase_tree.remove({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
+                    auto update_interval_end = std::chrono::high_resolution_clock::now();
+                    update_interval_time += update_interval_end - update_interval_start;
 
                     // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
                     next_phrase->lnode = rlist.findNearestRef(next_phrase->lnode);
@@ -624,7 +652,10 @@ void phraseBoundaries(int left_elem, int right_elem)
                     // Update the tree with the new entry
                     if (!deleteNext){
                         spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                        update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.insert({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
+                        update_interval_end = std::chrono::high_resolution_clock::now();
+                        update_interval_time += update_interval_end - update_interval_start;
                     }
                     continue;
                 }
@@ -700,7 +731,10 @@ void sourceBoundaries(int left_elem, int right_elem)
                 bool deleteCurr = false;
                 // First remove the offending entry from the tree
                 spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                auto update_interval_start = std::chrono::high_resolution_clock::now();
                 phrase_tree.remove({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                auto update_interval_end = std::chrono::high_resolution_clock::now();
+                update_interval_time += update_interval_end - update_interval_start;
 
                 // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
                 curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
@@ -717,7 +751,10 @@ void sourceBoundaries(int left_elem, int right_elem)
                 // Update the tree with the new entry
                 if (!deleteCurr){
                     spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                    update_interval_start = std::chrono::high_resolution_clock::now();
                     phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                    update_interval_end = std::chrono::high_resolution_clock::now();
+                    update_interval_time += update_interval_end - update_interval_start;
                 }
 
                 continue;
@@ -750,7 +787,10 @@ void sourceBoundaries(int left_elem, int right_elem)
                 bool deleteCurr = false;
                 // First remove the offending entry from the tree
                 spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                auto update_interval_start = std::chrono::high_resolution_clock::now();
                 phrase_tree.remove({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                auto update_interval_end = std::chrono::high_resolution_clock::now();
+                update_interval_time += update_interval_end - update_interval_start;
 
                 // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
                 curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
@@ -767,7 +807,10 @@ void sourceBoundaries(int left_elem, int right_elem)
                 // Update the tree with the new entry
                 if (!deleteCurr){
                     spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                    update_interval_start = std::chrono::high_resolution_clock::now();
                     phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                    update_interval_end = std::chrono::high_resolution_clock::now();
+                    update_interval_time += update_interval_end - update_interval_start;
                 }
 
                 continue; // If it gets to here then the next iteration will have the same curr phrase.
@@ -1364,6 +1407,7 @@ int main(int argc, char *argv[])
     spdlog::debug("Total Phrase Boundary Time (s): {:.6f}", std::chrono::duration<double>(phrase_boundary_time).count());
     spdlog::debug("Total Source Boundary Time (s): {:.6f}", std::chrono::duration<double>(source_boundary_time).count());
     spdlog::debug("Total Build Interval Tree Time (s): {:.6f}", std::chrono::duration<double>(build_interval_time).count());
+    spdlog::debug("Total Update Interval Tree Time (s): {:.6f}", std::chrono::duration<double>(update_interval_time).count());
     spdlog::debug("Total Non-explicit Phrase Time (s): {:.6f}", std::chrono::duration<double>(nonexplicit_phrase_time).count());
     spdlog::debug("Total Explicit Phrase Time (s): {:.6f}", std::chrono::duration<double>(explicit_phrase_time).count());
     spdlog::debug("Total Hash Range Update Time (s): {:.6f}", std::chrono::duration<double>(hash_range_time).count());
