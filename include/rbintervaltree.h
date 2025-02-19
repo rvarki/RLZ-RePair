@@ -47,8 +47,8 @@ class RBIntervalTree
         void checkNode(std::pair<int, int>& spair, Node*& node);
         bool isBST(Node* root, std::string message, Node* minNode, Node* maxNode);
         bool validateRB(Node* root, int blackHeight);
-
-    
+        bool checkProperty(Node* node);
+  
     public:
         RBIntervalTree();
         ~RBIntervalTree();
@@ -57,7 +57,7 @@ class RBIntervalTree
         void clear();
         void printTree();
         std::vector<T> findContained(std::pair<int, int> spair);
-        bool checkProperty(Node* node);
+        bool isValidIT();
         bool isValidRB();
 };
 
@@ -82,10 +82,9 @@ void RBIntervalTree<T>::rotateLeft(typename RBIntervalTree<T>::Node *&node)
         node->parent->right = child;
     child->left = node;
     node->parent = child;
-    // Fix max values
-    update(node);   // First update the original node
-    update(child);  // Then update the new subtree root
-    propagate(child->parent);  // Ensure correctness for ancestors
+    // Fix min and max values
+    update(node->right);   // First update the right child of the original node since it is swapped.
+    propagate(node);  // Propagate node since left child same and right child updated
 }
 
 // Utility function: Right Rotation
@@ -105,9 +104,9 @@ void RBIntervalTree<T>::rotateRight(typename RBIntervalTree<T>::Node *&node)
         node->parent->right = child;
     child->right = node;
     node->parent = child;
-    update(node);   // First update the original node
-    update(child);  // Then update the new subtree root
-    propagate(child->parent);  // Ensure correctness for ancestors
+    // Fix min and max values
+    update(node->left);   // First update the left child of the original node since it is swapped.
+    propagate(node);  // Propagate node since right child same and left child updated
 }
 
 // Utility function: Fixing Insertion Violation
@@ -444,6 +443,60 @@ bool RBIntervalTree<T>::validateRB(typename RBIntervalTree<T>::Node* node, int b
     return true;
 }
 
+// Public function: Checks if min and max property of tree are maintained
+template <typename T> 
+bool RBIntervalTree<T>::checkProperty(typename RBIntervalTree<T>::Node *node)
+{
+    if (node == nullptr)
+        return true;
+
+    // Compute expected max value
+    int expectedMax = *std::max_element(node->highVec.begin(), node->highVec.end());
+    if (node->left)
+        expectedMax = std::max(expectedMax, node->left->max);
+    if (node->right)
+        expectedMax = std::max(expectedMax, node->right->max);
+
+    // Check if the max property holds for the current node
+    if (node->max != expectedMax)
+    {
+        std::string highValues = "";
+        for (int i = 0; i < node->highVec.size(); i++){
+            highValues += std::to_string(node->highVec[i]);
+            if (i != node->highVec.size() - 1){
+                highValues += ",";
+            }
+        }
+        std::cout << "Max property violated at node [" << node->low << ", (" << highValues << ")]"
+                << " Expected: " << expectedMax << ", Found: " << node->max << std::endl;
+        return false;
+    }
+
+    // Compute expected min value
+    int expectedMin = node->low;
+    if (node->left)
+        expectedMin = std::min(expectedMin, node->left->min);
+    if (node->right)
+        expectedMin = std::min(expectedMin, node->right->min);
+
+    // Check if the min property holds for the current node
+    if (node->min != expectedMin)
+    {
+        std::string highValues = "";
+        for (int i = 0; i < node->highVec.size(); i++){
+            highValues += std::to_string(node->highVec[i]);
+            if (i != node->highVec.size() - 1){
+                highValues += ",";
+            }
+        }
+        std::cout << "Min property violated at node [" << node->low << ",(" << highValues << ")]"
+                << " Expected: " << expectedMin << ", Found: " << node->min << std::endl;
+        return false;
+    }
+
+    // Recursively check left and right subtrees
+    return checkProperty(node->left) && checkProperty(node->right);
+}
 
 // Constructor: Initialize IntervalTree (Red-Black Tree)
 template <typename T>
@@ -576,19 +629,29 @@ void RBIntervalTree<T>::remove(std::pair<int, int> interval, T data)
     {
         x = z->right;
         transplant(root, z, z->right);
+        if (z->right == nullptr) // If z->right does not exist then propagate from z->parent itself
+            propagate(z->parent);
+        else
+            propagate(z->right); // Have only reattached z->right to parent of z.
     }
     else if (z->right == nullptr)
     {
         x = z->left;
         transplant(root, z, z->left);
+        if (z->left == nullptr)
+            propagate(z->parent); // If z->left does not exist then propagate from z->parent itself
+        else
+            propagate(z->left); // Have only reattached z->left to parent of z.
     }
     else
     {
         y = minValueNode(z->right);
         yOriginalColor = y->color;
         x = y->right;
-        if (y->parent == z)
+        bool yParentz = false;
+        if (y->parent == z) // z->right does not have left subtree
         {
+            yParentz = true;
             if (x != nullptr)
                 x->parent = y;
         }
@@ -598,18 +661,26 @@ void RBIntervalTree<T>::remove(std::pair<int, int> interval, T data)
             y->right = z->right;
             y->right->parent = y;
         }
+        Node* y_orig_parent = y->parent;
         transplant(root, z, y);
         y->left = z->left;
         y->left->parent = y;
         y->color = z->color;
+        if (yParentz){
+            propagate(y);
+        }
+        else{ 
+            if (x == nullptr) // If y moves far and x is nullptr then need to call propagate on y's original parent.
+                propagate(y_orig_parent);
+            else
+                propagate(x);
+        }
     }
     delete z;
     if (yOriginalColor == BLACK)
     {
         fixDelete(x);
     }
-    Node *curr = (y != nullptr) ? y : x;
-    propagate(curr);
 }
 
 // Public function: Print the Interval Tree (Red-Black Tree)
@@ -635,53 +706,24 @@ std::vector<T> RBIntervalTree<T>::findContained(std::pair<int,int> spair)
     return returnValues;
 }
 
-// Public function: Checks if min and max property of tree are maintained
-template <typename T> 
-bool RBIntervalTree<T>::checkProperty(typename RBIntervalTree<T>::Node *node)
-{
-    if (node == nullptr)
-        return true;
-
-    // Compute expected max value
-    int expectedMax = node->high;
-    if (node->left)
-        expectedMax = std::max(expectedMax, node->left->max);
-    if (node->right)
-        expectedMax = std::max(expectedMax, node->right->max);
-
-    // Check if the max property holds for the current node
-    if (node->max != expectedMax)
-    {
-        std::cout << "Max property violated at node [" << node->low << ", " << node->high << "]"
-                << " Expected: " << expectedMax << ", Found: " << node->max << std::endl;
-        return false;
-    }
-
-    // Compute expected min value
-    int expectedMin = node->low;
-    if (node->left)
-        expectedMin = std::min(expectedMin, node->left->min);
-    if (node->right)
-        expectedMin = std::min(expectedMin, node->right->min);
-
-    // Check if the min property holds for the current node
-    if (node->min != expectedMin)
-    {
-        std::cout << "Min property violated at node [" << node->low << ", " << node->high << "]"
-                << " Expected: " << expectedMin << ", Found: " << node->min << std::endl;
-        return false;
-    }
-
-    // Recursively check left and right subtrees
-    return checkProperty(node->left) && checkProperty(node->right);
-}
-
 // Public function: Check if Red Black tree is valid
 template <typename T>
 bool RBIntervalTree<T>::isValidRB()
 {
     int blackHeight = 0;
     return isBST(root, "Root", nullptr, nullptr) && validateRB(root, blackHeight);
+}
+
+// Public function: Checks if the Red Black tree is valid Interval Tree 
+template <typename T>
+bool RBIntervalTree<T>::isValidIT()
+{
+    bool valid;
+    valid = checkProperty(root);
+    if (!valid){
+        std::cout << "Min and Max Ranges in Subtree Not Correct" << std::endl;
+    }
+    return valid;
 }
 
 
