@@ -340,7 +340,7 @@ bool checkExpPairs()
                 if (sameCharCount == 1 || sameCharCount % 2 == 0)
                 {
                     if (exp_pairs[{*pit,*it}].find(ExpPair(curr_phrase, pit, it)) == exp_pairs[{*pit,*it}].end()){
-                        //printPhrase(curr_phrase);
+                        printPhrase(curr_phrase);
                         spdlog::debug("Pair missing: ({},{})", printSymbol(*pit), printSymbol(*it));
                         // std::cout << "Address of phrase: " << &(*curr_phrase) << std::endl;
                         // std::cout << "Address of left element pointed to: " << &(*pit) << std::endl;
@@ -351,7 +351,7 @@ bool checkExpPairs()
                 else
                 {
                     if (exp_pairs[{*pit,*it}].find(ExpPair(curr_phrase, pit, it)) != exp_pairs[{*pit,*it}].end()){
-                        //printPhrase(curr_phrase);
+                        printPhrase(curr_phrase);
                         spdlog::debug("Pair exists that should not exist: ({},{})", printSymbol(*pit), printSymbol(*it));
                         return false;
                     }
@@ -1202,11 +1202,13 @@ void repair(std::ofstream& R, std::ofstream& C)
         
         auto pbound_start = std::chrono::high_resolution_clock::now();
         phraseBoundaries(left_elem, right_elem);
+        //checkExpPairs();
         auto pbound_end = std::chrono::high_resolution_clock::now();
         phrase_boundary_time += pbound_end - pbound_start;
 
         auto sbound_start = std::chrono::high_resolution_clock::now();
         sourceBoundaries(left_elem, right_elem);
+        //checkExpPairs();
         auto sbound_end = std::chrono::high_resolution_clock::now();
         source_boundary_time += sbound_end - sbound_start;
         
@@ -1364,6 +1366,8 @@ void repair(std::ofstream& R, std::ofstream& C)
                 PhraseNode* curr_phrase = it->exp_phrase;
                 auto curr_elem = it->left;
                 auto next_elem = it->right;
+                bool rightConsecutive = false; // Adding from the right causes consecutive same chars 
+                bool leftConsecutive = false; // Adding from the left causes consecutive same chars 
 
                 if (*curr_elem == left_elem && *next_elem == right_elem)
                 {
@@ -1378,7 +1382,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                         increaseFrequency(*(std::prev(curr_elem)), n);
                         exp_pairs[{*(std::prev(curr_elem)),n}].insert(ExpPair(curr_phrase, std::prev(curr_elem), curr_elem));
                         if (*(std::prev(curr_elem)) == n){
-                            updateExpPairs(curr_phrase, curr_elem, false);
+                            rightConsecutive = true;
                         }
                         // Decrease frequency of right pair effected by merge.
                         decreaseFrequency(*(next_elem), *(std::next(next_elem)));
@@ -1387,7 +1391,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                         increaseFrequency(n, *(std::next(next_elem)));
                         exp_pairs[{n, *(std::next(next_elem))}].insert(ExpPair(curr_phrase, curr_elem, std::next(next_elem)));
                         if (*(std::next(next_elem)) == n){
-                            updateExpPairs(curr_phrase, curr_elem, true);
+                            leftConsecutive = true;
                         }
                     }
                     // If both elments are at the beginning and end of the phrases, then have to look at the end of the prev and start of the next
@@ -1463,7 +1467,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                         increaseFrequency(n, *(std::next(next_elem)));
                         exp_pairs[{n, *(std::next(next_elem))}].insert(ExpPair(curr_phrase, curr_elem, std::next(next_elem)));
                         if (*(std::next(next_elem)) == n){
-                            updateExpPairs(curr_phrase, curr_elem, true);
+                            leftConsecutive = true;
                         }
                     }
                     // If the left elem is in the middle of the phrase and the right elem is at the end of the phrase
@@ -1476,7 +1480,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                         increaseFrequency(*(std::prev(curr_elem)), n);
                         exp_pairs[{*(std::prev(curr_elem)), n}].insert(ExpPair(curr_phrase, std::prev(curr_elem), curr_elem));
                         if (*(std::prev(curr_elem)) == n){
-                            updateExpPairs(curr_phrase, curr_elem, false);
+                            rightConsecutive = true;
                         }
 
                         // For the right pair effected have to look at next phrase
@@ -1503,6 +1507,15 @@ void repair(std::ofstream& R, std::ofstream& C)
                     // Replace current elem val with n and remove next elem 
                     *curr_elem = n;
                     curr_phrase->content.erase(next_elem);
+
+                    // Potentially fix consecutive same char pairs in exp_pairs
+                    if (leftConsecutive){
+                        updateExpPairs(curr_phrase, curr_elem, true);
+                    }
+                    if (rightConsecutive){
+                        updateExpPairs(curr_phrase, curr_elem, false);
+                    }
+                    //checkExpPairs();
                 }
             }
             exp_pairs.erase(max_pair);
