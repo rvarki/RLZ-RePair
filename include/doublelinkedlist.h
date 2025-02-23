@@ -138,7 +138,7 @@ class PhraseLinkedList
         PhraseNode* getTail(){ return tail; }
 
         // Insert before specified PhraseNode
-        PhraseNode* insert(PhraseNode* nextNode, std::list<unsigned int> ilist)
+        PhraseNode* insert(PhraseNode* nextNode, std::list<int> ilist)
         {
             if (!nextNode) return nullptr; // Invalid node
             PhraseNode* newNode = new PhraseNode(ilist);
@@ -180,7 +180,7 @@ class PhraseLinkedList
         }
 
         // Insert at the front
-        PhraseNode* push_front(std::list<unsigned int> ilist) {
+        PhraseNode* push_front(std::list<int> ilist) {
             PhraseNode* newNode = new PhraseNode(ilist);
             if (!head) {
                 head = tail = newNode;
@@ -206,7 +206,7 @@ class PhraseLinkedList
         }
 
         // Insert at the back
-        PhraseNode* push_back(std::list<unsigned int> ilist) {
+        PhraseNode* push_back(std::list<int> ilist) {
             PhraseNode* newNode = new PhraseNode(ilist);
             if (!tail) {
                 head = tail = newNode;

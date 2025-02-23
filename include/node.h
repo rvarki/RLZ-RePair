@@ -17,7 +17,7 @@ class RefNode
 class PhraseNode
 {
     public: 
-        std::list<unsigned int> content;
+        std::list<int> content;
         bool exp;
         RefNode* lnode;
         RefNode* rnode;
@@ -25,7 +25,7 @@ class PhraseNode
         PhraseNode* next;
 
         PhraseNode(RefNode* lnode, RefNode* rnode) : content({}), exp(false), lnode(lnode), rnode(rnode), prev(nullptr), next(nullptr) {}
-        PhraseNode(std::list<unsigned int> ilist) : content(ilist), exp(true), lnode(nullptr), rnode(nullptr), prev(nullptr), next(nullptr) {}
+        PhraseNode(std::list<int> ilist) : content(ilist), exp(true), lnode(nullptr), rnode(nullptr), prev(nullptr), next(nullptr) {}
 };
 
 
