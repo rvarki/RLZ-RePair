@@ -606,20 +606,32 @@ void updateExpPairs(PhraseNode* p, std::list<int>::iterator it, bool leftInsert)
         while (prevIt != p->content.begin())
         {
             if (*prevIt != letter){
+                prevIt = std::next(prevIt);
+                break;
+            }
+            prevIt = std::prev(prevIt);
+        }
+        if (prevIt == p->content.begin() && *prevIt != letter){
+            prevIt = std::next(prevIt);
+        }
+        auto nextIt = std::next(prevIt);
+        while(nextIt != p->content.end())
+        {
+            if (*nextIt != letter){
                 break;
             }
             else{
                 sameCharCount++;
+                if (sameCharCount % 2 == 0){
+                    exp_pairs[{letter,letter}].insert(ExpPair(p, prevIt, nextIt));
+                }
+                else{
+                    exp_pairs[{letter,letter}].erase(ExpPair(p, prevIt, nextIt));
+                }
             }
-            prevIt = std::prev(prevIt);
-        }
-        if (*prevIt == letter){
-            sameCharCount++;
-        }
-        if (sameCharCount % 2 != 0)
-        {
-            exp_pairs[{letter,letter}].erase(ExpPair(p, std::prev(it), it));
-        }
+            prevIt = nextIt;
+            nextIt = std::next(nextIt);
+        }       
     }
 }
 
@@ -673,10 +685,21 @@ void reassignExpPairs(PhraseNode* origPhrase, PhraseNode* newPhrase)
 {
     auto it = origPhrase->content.begin();
     auto nextIt = std::next(it);
+    int sameCharCount = 1;
     while(nextIt != origPhrase->content.end())
     {
-        exp_pairs[{*it, *nextIt}].erase(ExpPair(origPhrase, it, nextIt));
-        exp_pairs[{*it, *nextIt}].insert(ExpPair(newPhrase, it, nextIt));
+        if (*it == *nextIt){
+            sameCharCount++;
+        }
+        else{
+            sameCharCount = 1;
+        }
+
+        if (sameCharCount == 1 || sameCharCount % 2 == 0)
+        {
+            exp_pairs[{*it, *nextIt}].erase(ExpPair(origPhrase, it, nextIt));
+            exp_pairs[{*it, *nextIt}].insert(ExpPair(newPhrase, it, nextIt));
+        }
         it = nextIt;
         nextIt = std::next(nextIt);
     }
@@ -1202,13 +1225,11 @@ void repair(std::ofstream& R, std::ofstream& C)
         
         auto pbound_start = std::chrono::high_resolution_clock::now();
         phraseBoundaries(left_elem, right_elem);
-        //checkExpPairs();
         auto pbound_end = std::chrono::high_resolution_clock::now();
         phrase_boundary_time += pbound_end - pbound_start;
 
         auto sbound_start = std::chrono::high_resolution_clock::now();
         sourceBoundaries(left_elem, right_elem);
-        //checkExpPairs();
         auto sbound_end = std::chrono::high_resolution_clock::now();
         source_boundary_time += sbound_end - sbound_start;
         
@@ -1366,8 +1387,10 @@ void repair(std::ofstream& R, std::ofstream& C)
                 PhraseNode* curr_phrase = it->exp_phrase;
                 auto curr_elem = it->left;
                 auto next_elem = it->right;
-                bool rightConsecutive = false; // Adding from the right causes consecutive same chars 
-                bool leftConsecutive = false; // Adding from the left causes consecutive same chars 
+                bool rightAddConsecutive = false; // Adding from the right causes consecutive same chars 
+                bool leftAddConsecutive = false; // Adding from the left causes consecutive same chars
+                bool rightDeleteConsecutive = false;  // Deleting from the right causes shift of consecutive same chars 
+                bool leftDeleteConsecutive = false; // Deleting from the left causes shift of consecutive same chars
 
                 if (*curr_elem == left_elem && *next_elem == right_elem)
                 {
@@ -1382,7 +1405,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                         increaseFrequency(*(std::prev(curr_elem)), n);
                         exp_pairs[{*(std::prev(curr_elem)),n}].insert(ExpPair(curr_phrase, std::prev(curr_elem), curr_elem));
                         if (*(std::prev(curr_elem)) == n){
-                            rightConsecutive = true;
+                            rightAddConsecutive = true;
+                        }
+                        else if (*(std::prev(curr_elem)) == *(curr_elem))
+                        {
+                            rightDeleteConsecutive = true;
                         }
                         // Decrease frequency of right pair effected by merge.
                         decreaseFrequency(*(next_elem), *(std::next(next_elem)));
@@ -1391,7 +1418,10 @@ void repair(std::ofstream& R, std::ofstream& C)
                         increaseFrequency(n, *(std::next(next_elem)));
                         exp_pairs[{n, *(std::next(next_elem))}].insert(ExpPair(curr_phrase, curr_elem, std::next(next_elem)));
                         if (*(std::next(next_elem)) == n){
-                            leftConsecutive = true;
+                            leftAddConsecutive = true;
+                        }
+                        else if (*(std::next(next_elem)) == *(next_elem)){
+                            leftDeleteConsecutive = true;
                         }
                     }
                     // If both elments are at the beginning and end of the phrases, then have to look at the end of the prev and start of the next
@@ -1467,7 +1497,10 @@ void repair(std::ofstream& R, std::ofstream& C)
                         increaseFrequency(n, *(std::next(next_elem)));
                         exp_pairs[{n, *(std::next(next_elem))}].insert(ExpPair(curr_phrase, curr_elem, std::next(next_elem)));
                         if (*(std::next(next_elem)) == n){
-                            leftConsecutive = true;
+                            leftAddConsecutive = true;
+                        }
+                        else if (*(std::next(next_elem)) == *(next_elem)){
+                            leftDeleteConsecutive = true;
                         }
                     }
                     // If the left elem is in the middle of the phrase and the right elem is at the end of the phrase
@@ -1480,7 +1513,10 @@ void repair(std::ofstream& R, std::ofstream& C)
                         increaseFrequency(*(std::prev(curr_elem)), n);
                         exp_pairs[{*(std::prev(curr_elem)), n}].insert(ExpPair(curr_phrase, std::prev(curr_elem), curr_elem));
                         if (*(std::prev(curr_elem)) == n){
-                            rightConsecutive = true;
+                            rightAddConsecutive = true;
+                        }
+                        else if (*(std::prev(curr_elem)) == *(curr_elem)){
+                            rightDeleteConsecutive = true;
                         }
 
                         // For the right pair effected have to look at next phrase
@@ -1509,13 +1545,18 @@ void repair(std::ofstream& R, std::ofstream& C)
                     curr_phrase->content.erase(next_elem);
 
                     // Potentially fix consecutive same char pairs in exp_pairs
-                    if (leftConsecutive){
+                    if (leftAddConsecutive){
                         updateExpPairs(curr_phrase, curr_elem, true);
                     }
-                    if (rightConsecutive){
+                    if (leftDeleteConsecutive){
+                        updateExpPairs(curr_phrase, std::next(curr_elem), true);
+                    }
+                    if (rightAddConsecutive){
                         updateExpPairs(curr_phrase, curr_elem, false);
                     }
-                    //checkExpPairs();
+                    if (rightDeleteConsecutive){
+                        updateExpPairs(curr_phrase, std::prev(curr_elem), false);
+                    }
                 }
             }
             exp_pairs.erase(max_pair);
