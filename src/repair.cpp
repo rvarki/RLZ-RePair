@@ -288,49 +288,59 @@ int invalidSameCharPair(int letter)
 {
     PhraseNode* curr_phrase = plist.getHead();
     int invalidCount = 0;
+    int count = 0;
+    int left_elem = -1;
+    int right_elem = -1;
     while(curr_phrase != nullptr)
     {
         if (!(curr_phrase->exp))
         {
-            int count = 0;
-            RefNode* left_elem = rlist.findNearestRef(curr_phrase->lnode);
-            RefNode* right_elem = rlist.findNearestRef(curr_phrase->rnode);
-            RefNode* next_elem = left_elem->next;
-            while (next_elem != right_elem->next)
+            RefNode* leftNode = rlist.findNearestRef(curr_phrase->lnode);
+            RefNode* rightNode = rlist.findNearestRef(curr_phrase->rnode);
+            while (leftNode != rightNode->next)
             {
-                if (left_elem->val == letter && next_elem->val == letter){
+                if (left_elem == -1){
+                    left_elem = leftNode->val;
+                    leftNode = leftNode->next;
+                    continue;
+                }
+                right_elem = leftNode->val;
+                //spdlog::debug("Pair: ({},{})", printSymbol(left_elem), printSymbol(right_elem));
+                if (left_elem == letter && right_elem == letter){
                     count++;
                 }
                 else{
                     count = 0;
                 }
-                if (count % 2 == 0){
+                if (count > 0 && count % 2 == 0){
                     invalidCount++;
                 }
-                left_elem = next_elem;
-                next_elem = next_elem->next;
+                left_elem = right_elem;
+                leftNode = leftNode->next;
             }
         }
         else
         {
-            int left_elem = curr_phrase->content.front();
-            int next_elem;
-            int count = 0;
             auto it = curr_phrase->content.begin();
-            it++;
             while(it != curr_phrase->content.end())
             {
-                next_elem = *it;
-                if (left_elem == letter && next_elem == letter){
+                if (left_elem == -1){
+                    left_elem = *it;
+                    it++;
+                    continue;
+                }
+                right_elem = *it;
+                //spdlog::debug("Pair: ({},{})", printSymbol(left_elem), printSymbol(right_elem));
+                if (left_elem == letter && right_elem == letter){
                     count++;
                 }
                 else{
                     count = 0;
                 }
-                if (count % 2 == 0){
+                if (count > 0 && count % 2 == 0){
                     invalidCount++;
                 }
-                left_elem = next_elem;
+                left_elem = right_elem;
                 it++;
             }
         } 
@@ -826,6 +836,9 @@ void phraseBoundaries(int left_elem, int right_elem)
     // Iterate through the phrases in the phrase list
     while (curr_phrase != nullptr) 
     {
+        curr_phrase->ltmp = -1;
+        curr_phrase->rtmp = -1;
+
         PhraseNode* next_phrase = curr_phrase->next;
         // If there is a next phrase, check the phrase boundaries.
         if (next_phrase != nullptr)
@@ -1284,7 +1297,7 @@ void increaseFrequency(int left, int right)
  */
 void repair(std::ofstream& R, std::ofstream& C)
 {
-    //int start_size = psize;
+    int start_size = psize;
 
     // Write alpha to R file
     R.write(reinterpret_cast<const char*>(&alpha), sizeof(int));
@@ -1313,10 +1326,10 @@ void repair(std::ofstream& R, std::ofstream& C)
         }
 
         // Calculate number of invalid consecutive pairs of chars
-        // int invalidFreq = 0;
-        // if (orec->pair.left == orec->pair.right){
-        //     invalidFreq = invalidSameCharPair(orec->pair.left);
-        // }
+        int invalidFreq = 0;
+        if (orec->pair.left == orec->pair.right){
+            invalidFreq = invalidSameCharPair(orec->pair.left);
+        }
 
         if (verbosity == 1 || verbosity == 2){
             printMaxPair(n, orec);
@@ -1400,21 +1413,28 @@ void repair(std::ofstream& R, std::ofstream& C)
                             increaseFrequency(leftleftElem, n);
                         } 
                         else if (nexp_phrase->prev != nullptr && !nexp_phrase->prev->exp) {
-                            leftleftElem = rlist.findNearestRef(nexp_phrase->prev->rnode)->val;
+                            if (nexp_phrase->prev->rtmp == -1)
+                                leftleftElem = rlist.findNearestRef(nexp_phrase->prev->rnode)->val;
+                            else
+                                leftleftElem = nexp_phrase->prev->rtmp;
                             decreaseFrequency(leftleftElem, leftElem);
                             increaseFrequency(leftleftElem, n);
                         }
-
+                        nexp_phrase->ltmp = n;
                         if (nexp_phrase->next != nullptr && nexp_phrase->next->exp){
                             rightrightElem = nexp_phrase->next->content.front();
                             decreaseFrequency(rightElem, rightrightElem);
                             increaseFrequency(n, rightrightElem);
                         } 
                         else if (nexp_phrase->next != nullptr && !nexp_phrase->next->exp) {
-                            rightrightElem = rlist.findNearestRef(nexp_phrase->next->lnode)->val;
+                            if (nexp_phrase->next->ltmp == -1)
+                                rightrightElem = rlist.findNearestRef(nexp_phrase->next->lnode)->val;
+                            else
+                                rightrightElem = nexp_phrase->next->ltmp;
                             decreaseFrequency(rightElem, rightrightElem);
                             increaseFrequency(n, rightrightElem);
                         }
+                        nexp_phrase->rtmp = n;
                     }
                     // If range touches left edge, we can only decrease the left pair at the moment.
                     else if (lRange == lref->pos && rRange != rref->pos)
@@ -1425,7 +1445,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                             increaseFrequency(leftleftElem, n);
                         } 
                         else if (nexp_phrase->prev != nullptr && !nexp_phrase->prev->exp) {
-                            leftleftElem = rlist.findNearestRef(nexp_phrase->prev->rnode)->val;
+                            if (nexp_phrase->prev->rtmp == -1)
+                                leftleftElem = rlist.findNearestRef(nexp_phrase->prev->rnode)->val;
+                            else
+                                leftleftElem = nexp_phrase->prev->rtmp;
+                            nexp_phrase->ltmp = n;
                             decreaseFrequency(leftleftElem, leftElem);
                             increaseFrequency(leftleftElem, n);
                         }
@@ -1447,7 +1471,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                             increaseFrequency(n, rightrightElem);
                         } 
                         else if (nexp_phrase->next != nullptr && !nexp_phrase->next->exp) {
-                            rightrightElem = rlist.findNearestRef(nexp_phrase->next->lnode)->val;
+                            if (nexp_phrase->next->ltmp == -1)
+                                rightrightElem = rlist.findNearestRef(nexp_phrase->next->lnode)->val;
+                            else
+                                rightrightElem = nexp_phrase->next->ltmp;
+                            nexp_phrase->rtmp = n;
                             decreaseFrequency(rightElem, rightrightElem);
                             increaseFrequency(n, rightrightElem);
                         }
@@ -1673,18 +1701,18 @@ void repair(std::ofstream& R, std::ofstream& C)
         explicit_phrase_time += exp_end - exp_start;
 
         // Check the number of chars replaced is correct
-        // spdlog::debug("----------------------------");
-        // printMaxPair(n, orec);
-        // int phrase_length = checkPhraseSizes();
-        // int num_pairs_replaced = start_size - phrase_length;
-        // int max_freq = orec->freq - invalidFreq;
-        // spdlog::debug("Number of occurences: {}", max_freq);
-        // spdlog::debug("Number replaced: {}", num_pairs_replaced);
-        // if (num_pairs_replaced != max_freq){
-        //     spdlog::error("Something is wrong");
-        // } 
-        // start_size = phrase_length;
-        // spdlog::debug("----------------------------");
+        spdlog::debug("----------------------------");
+        printMaxPair(n, orec);
+        int phrase_length = checkPhraseSizes();
+        int num_pairs_replaced = start_size - phrase_length;
+        int max_freq = orec->freq - invalidFreq;
+        spdlog::debug("Number of occurences: {}", max_freq);
+        spdlog::debug("Number replaced: {}", num_pairs_replaced);
+        if (num_pairs_replaced != max_freq){
+            spdlog::error("Something is wrong");
+        } 
+        start_size = phrase_length;
+        spdlog::debug("----------------------------");
 
         // Remove old record
         removeRecord(&Rec,oid);
