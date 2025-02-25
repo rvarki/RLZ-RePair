@@ -1327,7 +1327,10 @@ void repair(std::ofstream& R, std::ofstream& C)
 
         // Calculate number of invalid consecutive pairs of chars
         int invalidFreq = 0;
-        if (orec->pair.left == orec->pair.right){
+        int maxLeft = orec->pair.left;
+        int maxRight = orec->pair.right;
+        int max_freq = orec->freq;
+        if (maxLeft == maxRight){
             invalidFreq = invalidSameCharPair(orec->pair.left);
         }
 
@@ -1702,10 +1705,10 @@ void repair(std::ofstream& R, std::ofstream& C)
 
         // Check the number of chars replaced is correct
         spdlog::debug("----------------------------");
-        printMaxPair(n, orec);
+        spdlog::debug("Max Pair: ({},{})", maxLeft, maxRight);
         int phrase_length = checkPhraseSizes();
         int num_pairs_replaced = start_size - phrase_length;
-        int max_freq = orec->freq - invalidFreq;
+        max_freq = max_freq - invalidFreq;
         spdlog::debug("Number of occurences: {}", max_freq);
         spdlog::debug("Number replaced: {}", num_pairs_replaced);
         if (num_pairs_replaced != max_freq){
