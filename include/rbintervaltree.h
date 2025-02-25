@@ -702,6 +702,9 @@ std::vector<T> RBIntervalTree<T>::findContained(std::pair<int,int> spair)
 {
     returnValues.clear();
     Node* node = root;
+    if (node == nullptr){
+        return returnValues;
+    }
     checkNode(spair, root);
     return returnValues;
 }
