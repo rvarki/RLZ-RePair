@@ -277,6 +277,107 @@ void printPhrase(PhraseNode* curr_phrase)
     }
 }
 
+/**
+ * @brief Calculate number of invalid consecutive same chars in the phrases
+ * For example, eeee -> 1 (the 2nd ee)
+ * For example, aaa -> 1 (the 2nd aa)
+ * For example, iiiii -> 2 (2nd and 4th ii)
+ */
+
+int invalidSameCharPair(int letter)
+{
+    PhraseNode* curr_phrase = plist.getHead();
+    int invalidCount = 0;
+    while(curr_phrase != nullptr)
+    {
+        if (!(curr_phrase->exp))
+        {
+            int count = 0;
+            RefNode* left_elem = rlist.findNearestRef(curr_phrase->lnode);
+            RefNode* right_elem = rlist.findNearestRef(curr_phrase->rnode);
+            RefNode* next_elem = left_elem->next;
+            while (next_elem != right_elem->next)
+            {
+                if (left_elem->val == letter && next_elem->val == letter){
+                    count++;
+                }
+                else{
+                    count = 0;
+                }
+                if (count % 2 == 0){
+                    invalidCount++;
+                }
+                left_elem = next_elem;
+                next_elem = next_elem->next;
+            }
+        }
+        else
+        {
+            int left_elem = curr_phrase->content.front();
+            int next_elem;
+            int count = 0;
+            auto it = curr_phrase->content.begin();
+            it++;
+            while(it != curr_phrase->content.end())
+            {
+                next_elem = *it;
+                if (left_elem == letter && next_elem == letter){
+                    count++;
+                }
+                else{
+                    count = 0;
+                }
+                if (count % 2 == 0){
+                    invalidCount++;
+                }
+                left_elem = next_elem;
+                it++;
+            }
+        } 
+        curr_phrase = curr_phrase->next;
+    }
+    return invalidCount;
+}
+
+/**
+ * @brief 
+ */
+
+int checkPhraseSizes()
+{
+    PhraseNode* curr_phrase = plist.getHead();
+    int nexp_length = 0;
+    int exp_length = 0;
+    int total_length;
+    while(curr_phrase != nullptr)
+    {
+        if (!(curr_phrase->exp)){
+            int length = 0;
+            RefNode* left_elem = rlist.findNearestRef(curr_phrase->lnode);
+            RefNode* right_elem = rlist.findNearestRef(curr_phrase->rnode);
+            while (left_elem != right_elem)
+            {
+                if (left_elem->deleted == false){
+                    length++;
+                }
+                left_elem = left_elem->next;
+            }
+            length++;
+            nexp_length += length;
+        }
+        else{
+            exp_length += curr_phrase->content.size();
+        } 
+        curr_phrase = curr_phrase->next;
+    }
+    
+    total_length = nexp_length + exp_length;
+    spdlog::debug("Non explicit phrase chars: {}", nexp_length);
+    spdlog::debug("Explicit phrase chars: {}", exp_length);
+    spdlog::debug("Total characters: {}", total_length);
+    return total_length;
+}
+
 
 /**
  * @brief Prints the current phrases. Debug purposes only.
@@ -647,13 +748,12 @@ void updateMergeExpPairs(PhraseNode* p, std::list<int>::iterator it)
     while (it != p->content.begin())
     {
         if (*it != letter){
+            it = std::next(it);
             break;
         }
-        else{
-            it = std::prev(it);
-        }
+        it = std::prev(it);
     }
-    if (*it != letter){
+    if (it == p->content.begin() && *it != letter){
         it = std::next(it);
     }
     auto nextIt = std::next(it);
@@ -1184,6 +1284,8 @@ void increaseFrequency(int left, int right)
  */
 void repair(std::ofstream& R, std::ofstream& C)
 {
+    //int start_size = psize;
+
     // Write alpha to R file
     R.write(reinterpret_cast<const char*>(&alpha), sizeof(int));
     if (!R) {
@@ -1209,6 +1311,12 @@ void repair(std::ofstream& R, std::ofstream& C)
         if (orec->freq == 1){
             break;
         }
+
+        // Calculate number of invalid consecutive pairs of chars
+        // int invalidFreq = 0;
+        // if (orec->pair.left == orec->pair.right){
+        //     invalidFreq = invalidSameCharPair(orec->pair.left);
+        // }
 
         if (verbosity == 1 || verbosity == 2){
             printMaxPair(n, orec);
@@ -1563,6 +1671,20 @@ void repair(std::ofstream& R, std::ofstream& C)
         }
         auto exp_end = std::chrono::high_resolution_clock::now();
         explicit_phrase_time += exp_end - exp_start;
+
+        // Check the number of chars replaced is correct
+        // spdlog::debug("----------------------------");
+        // printMaxPair(n, orec);
+        // int phrase_length = checkPhraseSizes();
+        // int num_pairs_replaced = start_size - phrase_length;
+        // int max_freq = orec->freq - invalidFreq;
+        // spdlog::debug("Number of occurences: {}", max_freq);
+        // spdlog::debug("Number replaced: {}", num_pairs_replaced);
+        // if (num_pairs_replaced != max_freq){
+        //     spdlog::error("Something is wrong");
+        // } 
+        // start_size = phrase_length;
+        // spdlog::debug("----------------------------");
 
         // Remove old record
         removeRecord(&Rec,oid);
