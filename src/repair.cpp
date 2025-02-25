@@ -432,6 +432,7 @@ void printPhraseList()
  */
 bool checkExpPairs()
 {
+    std::unordered_map<std::pair<int, int>, std::unordered_set<ExpPair, ExpPairHash, ExpPairEqual>, pair_int_hash> exp_pairs_tmp(exp_pairs);
     PhraseNode* curr_phrase = plist.getHead();
     while(curr_phrase != nullptr)
     {
@@ -450,20 +451,23 @@ bool checkExpPairs()
                 }
                 if (sameCharCount == 1 || sameCharCount % 2 == 0)
                 {
-                    if (exp_pairs[{*pit,*it}].find(ExpPair(curr_phrase, pit, it)) == exp_pairs[{*pit,*it}].end()){
+                    if (exp_pairs_tmp[{*pit,*it}].find(ExpPair(curr_phrase, pit, it)) == exp_pairs_tmp[{*pit,*it}].end()){
                         printPhrase(curr_phrase);
-                        spdlog::debug("Pair missing: ({},{})", printSymbol(*pit), printSymbol(*it));
+                        spdlog::error("Pair missing: ({},{})", printSymbol(*pit), printSymbol(*it));
                         // std::cout << "Address of phrase: " << &(*curr_phrase) << std::endl;
                         // std::cout << "Address of left element pointed to: " << &(*pit) << std::endl;
                         // std::cout << "Address of right element pointed to: " << &(*it) << std::endl;
                         return false;
                     }
+                    else{
+                        exp_pairs_tmp[{*pit,*it}].erase(ExpPair(curr_phrase, pit, it));
+                    }
                 }
                 else
                 {
-                    if (exp_pairs[{*pit,*it}].find(ExpPair(curr_phrase, pit, it)) != exp_pairs[{*pit,*it}].end()){
+                    if (exp_pairs_tmp[{*pit,*it}].find(ExpPair(curr_phrase, pit, it)) != exp_pairs_tmp[{*pit,*it}].end()){
                         printPhrase(curr_phrase);
-                        spdlog::debug("Pair exists that should not exist: ({},{})", printSymbol(*pit), printSymbol(*it));
+                        spdlog::error("Pair exists that should not exist: ({},{})", printSymbol(*pit), printSymbol(*it));
                         return false;
                     }
                 }
@@ -473,6 +477,15 @@ bool checkExpPairs()
         }        
         curr_phrase = curr_phrase->next;
     }
+    for (const auto& entry : exp_pairs_tmp)
+    {
+        std::pair<int, int> key = entry.first;
+        if (exp_pairs_tmp[key].size() != 0){
+            spdlog::error("Key should not exist: ({},{}) : {} pairs", printSymbol(key.first), printSymbol(key.second), exp_pairs_tmp[key].size());
+        }
+        return false;
+    }
+
     spdlog::debug("Everything is correct");
     return true;
 }
