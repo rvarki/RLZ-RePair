@@ -122,9 +122,10 @@ class PhraseLinkedList
     private:
         PhraseNode* head;
         PhraseNode* tail;
+        int size;
 
     public:
-        PhraseLinkedList() : head(nullptr), tail(nullptr) {}
+        PhraseLinkedList() : size(0), head(nullptr), tail(nullptr) {}
 
         ~PhraseLinkedList() {
             while (head != nullptr) {
@@ -136,6 +137,7 @@ class PhraseLinkedList
 
         PhraseNode* getHead(){ return head; }
         PhraseNode* getTail(){ return tail; }
+        int getSize(){ return size; }
 
         // Insert before specified PhraseNode
         PhraseNode* insert(PhraseNode* nextNode, std::list<int> ilist)
@@ -150,6 +152,7 @@ class PhraseLinkedList
                 head = newNode; 
             }
             nextNode->prev = newNode;
+            size++;
             return newNode;
         }
 
@@ -172,6 +175,7 @@ class PhraseLinkedList
 
             PhraseNode* prevNode = currNode->prev; // Store previous node before deleting
             PhraseNode* forwardNode = currNode->next; // Store previous node before deleting
+            size--;
             delete currNode;
             if (prevNode != nullptr)
                 return prevNode; // Return the prev node to allow easy iteration
@@ -189,6 +193,7 @@ class PhraseLinkedList
                 head->prev = newNode;
                 head = newNode;
             }
+            size++;
             return newNode;
         }
 
@@ -202,6 +207,7 @@ class PhraseLinkedList
                 head->prev = newNode;
                 head = newNode;
             }
+            size++;
             return newNode;
         }
 
@@ -215,6 +221,7 @@ class PhraseLinkedList
                 newNode->prev = tail;
                 tail = newNode;
             }
+            size++;
             return newNode;
         }
 
@@ -228,6 +235,7 @@ class PhraseLinkedList
                 newNode->prev = tail;
                 tail = newNode;
             }
+            size++;
             return newNode;
         }
 };
