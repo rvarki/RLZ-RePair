@@ -282,13 +282,17 @@ void printPhrase(PhraseNode* curr_phrase)
  * For example, eeee -> 1 (the 2nd ee)
  * For example, aaa -> 1 (the 2nd aa)
  * For example, iiiii -> 2 (2nd and 4th ii)
+ * Assumes run after phrase and source boundary so no crossing boundary
  */
 
 int invalidSameCharPair(int letter)
 {
     PhraseNode* curr_phrase = plist.getHead();
-    int invalidCount = 0;
-    int count = 0;
+    int invalidNexpCount = 0;
+    int invalidExpCount = 0;
+    int count;
+    int countNexp = 0;
+    int countExp = 0;
     int left_elem = -1;
     int right_elem = -1;
     while(curr_phrase != nullptr)
@@ -305,19 +309,20 @@ int invalidSameCharPair(int letter)
                     continue;
                 }
                 right_elem = leftNode->val;
-                //spdlog::debug("Pair: ({},{})", printSymbol(left_elem), printSymbol(right_elem));
                 if (left_elem == letter && right_elem == letter){
                     count++;
+                    countNexp++;
                 }
                 else{
                     count = 0;
                 }
                 if (count > 0 && count % 2 == 0){
-                    invalidCount++;
+                    invalidNexpCount++;
                 }
                 left_elem = right_elem;
                 leftNode = leftNode->next;
             }
+            
         }
         else
         {
@@ -330,15 +335,15 @@ int invalidSameCharPair(int letter)
                     continue;
                 }
                 right_elem = *it;
-                //spdlog::debug("Pair: ({},{})", printSymbol(left_elem), printSymbol(right_elem));
                 if (left_elem == letter && right_elem == letter){
                     count++;
+                    countExp++;
                 }
                 else{
                     count = 0;
                 }
                 if (count > 0 && count % 2 == 0){
-                    invalidCount++;
+                    invalidExpCount++;
                 }
                 left_elem = right_elem;
                 it++;
@@ -346,7 +351,11 @@ int invalidSameCharPair(int letter)
         } 
         curr_phrase = curr_phrase->next;
     }
-    return invalidCount;
+    spdlog::trace("Number of Non-explicit Occurences: {}", countNexp);
+    spdlog::trace("Invalid Non-explicit Count: {}", invalidNexpCount);
+    spdlog::trace("Number of Explicit Occurences: {}", countExp);
+    spdlog::trace("Invalid Explicit Count: {}", invalidExpCount);
+    return invalidNexpCount + invalidExpCount;
 }
 
 /**
@@ -1125,8 +1134,8 @@ void phraseBoundaries(int left_elem, int right_elem)
 
     // Debug
     if (verbosity == 2){
-        spdlog::trace("Phrase list after phrase boundary condition.");
-        printPhraseList();
+        //spdlog::trace("Phrase list after phrase boundary condition.");
+        //printPhraseList();
     }
 }
 
@@ -1314,8 +1323,8 @@ void sourceBoundaries(int left_elem, int right_elem)
     }
     // Debug
     if (verbosity == 2){
-        spdlog::trace("Phrase list after source boundary condition.");
-        printPhraseList();
+        //spdlog::trace("Phrase list after source boundary condition.");
+        //printPhraseList();
     }
 }
 
@@ -1412,15 +1421,6 @@ void repair(std::ofstream& R, std::ofstream& C)
             break;
         }
 
-        // Calculate number of invalid consecutive pairs of chars
-        int invalidFreq = 0;
-        int maxLeft = orec->pair.left;
-        int maxRight = orec->pair.right;
-        int max_freq = orec->freq;
-        if (maxLeft == maxRight){
-            invalidFreq = invalidSameCharPair(orec->pair.left);
-        }
-
         if (verbosity == 1 || verbosity == 2){
             printMaxPair(n, orec);
         }
@@ -1444,6 +1444,20 @@ void repair(std::ofstream& R, std::ofstream& C)
         auto sbound_end = std::chrono::high_resolution_clock::now();
         source_boundary_time += sbound_end - sbound_start;
         
+        // Calculate number of invalid consecutive pairs of chars
+        int maxLeft = orec->pair.left;
+        int maxRight = orec->pair.right;
+        int max_freq = orec->freq;
+        int invalidFreq = 0;
+        if (verbosity == 2)
+        {
+            if (maxLeft == maxRight){
+                checkPhraseSizes();
+                spdlog::trace("Same Char Pair: ({},{})", printSymbol(maxLeft), printSymbol(maxRight));
+                invalidFreq = invalidSameCharPair(orec->pair.left);
+            }
+        }
+
         std::pair<int,int> max_pair = {left_elem,right_elem};
         // Check if the current max pair is in hash ranges, if is then have to go through non-explicit phrases.
         if (hash_ranges.find(max_pair) != hash_ranges.end())
@@ -1791,18 +1805,21 @@ void repair(std::ofstream& R, std::ofstream& C)
         explicit_phrase_time += exp_end - exp_start;
 
         // Check the number of chars replaced is correct
-        spdlog::debug("----------------------------");
-        spdlog::debug("Max Pair: ({},{})", maxLeft, maxRight);
-        int phrase_length = checkPhraseSizes();
-        int num_pairs_replaced = start_size - phrase_length;
-        max_freq = max_freq - invalidFreq;
-        spdlog::debug("Number of occurences: {}", max_freq);
-        spdlog::debug("Number replaced: {}", num_pairs_replaced);
-        if (num_pairs_replaced != max_freq){
-            spdlog::error("Something is wrong");
-        } 
-        start_size = phrase_length;
-        spdlog::debug("----------------------------");
+        if (verbosity == 2)
+        {
+            spdlog::trace("----------------------------");
+            spdlog::trace("Max Pair: ({},{})", printSymbol(maxLeft), printSymbol(maxRight));
+            int phrase_length = checkPhraseSizes();
+            int num_pairs_replaced = start_size - phrase_length;
+            max_freq = max_freq - invalidFreq;
+            spdlog::trace("Number of occurences: {}", max_freq);
+            spdlog::trace("Number replaced: {}", num_pairs_replaced);
+            if (num_pairs_replaced != max_freq){
+                spdlog::error("Something is wrong");
+            } 
+            start_size = phrase_length;
+            spdlog::trace("----------------------------");
+        }
 
         // Remove old record
         removeRecord(&Rec,oid);
@@ -1821,8 +1838,8 @@ void repair(std::ofstream& R, std::ofstream& C)
             spdlog::trace("");
             spdlog::trace("*** Information after bi-gram replacement ***");
             printRef();
-            printPhraseList();
-            printAllRecords();
+            //printPhraseList();
+            //printAllRecords();
             checkExpPairs();
             checkHeap();
             //phrase_tree.printTree();
