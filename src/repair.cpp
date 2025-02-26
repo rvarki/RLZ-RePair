@@ -350,7 +350,81 @@ int invalidSameCharPair(int letter)
 }
 
 /**
- * @brief 
+ * @brief Checks whether the frequencies in the heap is correct 
+ */
+
+bool checkHeap()
+{
+    std::unordered_map<std::pair<int,int>, int, pair_int_hash> pair_count;
+    PhraseNode* curr_phrase = plist.getHead();
+    int left_elem = -1;
+    int right_elem = -1;
+    while(curr_phrase != nullptr)
+    {
+        if (!(curr_phrase->exp))
+        {
+            RefNode* leftNode = rlist.findNearestRef(curr_phrase->lnode);
+            RefNode* rightNode = rlist.findNearestRef(curr_phrase->rnode);
+            while (leftNode != rightNode->next)
+            {
+                if (left_elem == -1){
+                    left_elem = leftNode->val;
+                    leftNode = leftNode->next;
+                    continue;
+                }
+                right_elem = leftNode->val;
+                pair_count[{left_elem, right_elem}]++;
+                left_elem = right_elem;
+                leftNode = leftNode->next;
+            }
+        }
+        else
+        {
+            auto it = curr_phrase->content.begin();
+            while(it != curr_phrase->content.end())
+            {
+                if (left_elem == -1){
+                    left_elem = *it;
+                    it++;
+                    continue;
+                }
+                right_elem = *it;
+                pair_count[{left_elem, right_elem}]++;
+                left_elem = right_elem;
+                it++;
+            }
+        } 
+        curr_phrase = curr_phrase->next;
+    }
+
+    for (auto p : pair_count)
+    {
+        std::pair<int,int> key = p.first;
+        int value = p.second;
+        if (value > 1)
+        {
+            Tpair new_pair;
+            new_pair.left = key.first;
+            new_pair.right = key.second;
+            int nid = searchHash(Hash,new_pair);
+            if (nid == -1){
+                spdlog::error("Pair ({},{}) does not exist in heap but should!", printSymbol(key.first), printSymbol(key.second));
+                return false;
+            }
+            else{
+                Trecord* nrec = &Rec.records[nid];
+                if (value != nrec->freq){
+                    spdlog::error("Pair ({},{}) | Heap: {} , Actual: {}",  printSymbol(key.first), printSymbol(key.second), nrec->freq, value);
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+/**
+ * @brief Calculates the size of the phrases currently
  */
 
 int checkPhraseSizes()
@@ -1749,7 +1823,8 @@ void repair(std::ofstream& R, std::ofstream& C)
             printRef();
             printPhraseList();
             printAllRecords();
-            //checkExpPairs();
+            checkExpPairs();
+            checkHeap();
             //phrase_tree.printTree();
             spdlog::trace("*********************************************");
         }
