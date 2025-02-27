@@ -753,10 +753,10 @@ void populatePhrases(std::ifstream& pfile)
     pfile.seekg(0, std::ios::beg);
 
     // Debug
-    if (verbosity == 2){
-        spdlog::trace("The non-explicit phrases at the start");
-        printPhraseList();
-    }
+    // if (verbosity == 2){
+    //     spdlog::trace("The non-explicit phrases at the start");
+    //     printPhraseList();
+    // }
 }
 
 /**
@@ -1134,10 +1134,10 @@ void phraseBoundaries(int left_elem, int right_elem)
     }
 
     // Debug
-    if (verbosity == 2){
-        spdlog::trace("Phrase list after phrase boundary condition.");
-        printPhraseList();
-    }
+    // if (verbosity == 2){
+    //     spdlog::trace("Phrase list after phrase boundary condition.");
+    //     printPhraseList();
+    // }
 }
 
 /**
@@ -1323,10 +1323,10 @@ void sourceBoundaries(int left_elem, int right_elem)
         curr_phrase = curr_phrase->next;
     }
     // Debug
-    if (verbosity == 2){
-        spdlog::trace("Phrase list after source boundary condition.");
-        printPhraseList();
-    }
+    // if (verbosity == 2){
+    //     spdlog::trace("Phrase list after source boundary condition.");
+    //     printPhraseList();
+    // }
 }
 
 /**
@@ -1628,8 +1628,8 @@ void repair(std::ofstream& R, std::ofstream& C)
                 PhraseNode* curr_phrase = it->exp_phrase;
                 auto leftIt = it->left;
                 auto rightIt = it->right;
-                auto leftleftIt;
-                auto rightrightIt;
+                std::list<int>::iterator leftleftIt;
+                std::list<int>::iterator rightrightIt;
 
                 // Some assertions
                 assert(leftIt <= rightIt);
@@ -1742,7 +1742,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                             }
                         }
                         // Decrease frequency of right pair effected by merge.
-                        rightrightIt = *(std::next(rightIt));
+                        rightrightIt = std::next(rightIt);
                         decreaseFrequency(*rightIt, *rightrightIt);
                         exp_pairs[{*rightIt, *rightrightIt}].erase(ExpPair(curr_phrase, rightIt, rightrightIt));
                         // Increase frequency of new pair.
