@@ -279,6 +279,25 @@ void printPhrase(PhraseNode* curr_phrase)
 }
 
 /**
+ * @brief Print supposed phrase
+ */
+
+void printSupposedPhrase(PhraseNode* curr_phrase, std::list<int>::iterator leftIt)
+{
+    while (leftIt != curr_phrase->content.begin()){
+        leftIt = std::prev(leftIt);
+    }
+
+    std::string content = "";
+    while(leftIt != curr_phrase->content.end())
+    {
+        content = content + " " + printSymbol(*leftIt);
+        leftIt++;
+    }
+    spdlog::trace("Phrase (explicit): \033[1;31m{}\033[0m", content);
+}
+
+/**
  * @brief Calculate number of invalid consecutive same chars in the phrases
  * For example, eeee -> 1 (the 2nd ee)
  * For example, aaa -> 1 (the 2nd aa)
@@ -810,19 +829,18 @@ void updateExpPairs(PhraseNode* p, std::list<int>::iterator it, bool leftInsert)
     }
     else
     {
-        auto prevIt = std::prev(it);
-        while (prevIt != p->content.begin())
+        while (it != p->content.begin())
         {
-            if (*prevIt != letter){
-                prevIt = std::next(prevIt);
+            if (*it != letter){
+                it = std::next(it);
                 break;
             }
-            prevIt = std::prev(prevIt);
+            it = std::prev(it);
         }
-        if (prevIt == p->content.begin() && *prevIt != letter){
-            prevIt = std::next(prevIt);
+        if (it == p->content.begin() && *it != letter){
+            it = std::next(it);
         }
-        auto nextIt = std::next(prevIt);
+        auto nextIt = std::next(it);
         while(nextIt != p->content.end())
         {
             if (*nextIt != letter){
@@ -831,13 +849,13 @@ void updateExpPairs(PhraseNode* p, std::list<int>::iterator it, bool leftInsert)
             else{
                 sameCharCount++;
                 if (sameCharCount % 2 == 0){
-                    exp_pairs[{letter,letter}].insert(ExpPair(p, prevIt, nextIt));
+                    exp_pairs[{letter,letter}].insert(ExpPair(p, it, nextIt));
                 }
                 else{
-                    exp_pairs[{letter,letter}].erase(ExpPair(p, prevIt, nextIt));
+                    exp_pairs[{letter,letter}].erase(ExpPair(p, it, nextIt));
                 }
             }
-            prevIt = nextIt;
+            it = nextIt;
             nextIt = std::next(nextIt);
         }       
     }
