@@ -6,14 +6,16 @@
 #include <sstream>
 #include <cstdint>
 #include <unordered_map>
+#include <unordered_set>
 #include <list>
 #include <functional>
 #include <utility>
 #include <stack>
+#include <cassert>
 #include <vector> 
 #include <deque>
 #include "repair.h"
-#include "IntervalTree.h"
+#include "rbintervaltree.h"
 #include "doublelinkedlist.h"
 #include <chrono>
 
@@ -68,14 +70,40 @@ struct pair_int_hash {
 
 // Hash table containing the reference ranges of pairs (bi-grams). 
 // The vector contains the left endpoint of the range corresponding to the pair in the bi-gram since the range is left endpoint to left endpoint + 1
-std::unordered_map<std::pair<int, int>, std::deque<int>, pair_int_hash> hash_ranges; 
+std::unordered_map<std::pair<int, int>, std::deque<int>, pair_int_hash> hash_ranges;
+
+// Hash table containing info about the pairs within the explicit phrases
+struct ExpPair
+{
+    PhraseNode* exp_phrase;
+    std::list<int>::iterator left; 
+    std::list<int>::iterator right;
+    ExpPair(PhraseNode* phrase, std::list<int>::iterator l, std::list<int>::iterator r) : exp_phrase(phrase), left(l), right(r) {}
+};
+
+struct ExpPairHash {
+    std::size_t operator()(const ExpPair& exp) const {
+        // Combine the hash of the exp_phrase pointer, left, and right
+        std::size_t h1 = std::hash<PhraseNode*>{}(exp.exp_phrase);
+        std::size_t h2 = std::hash<int*>{}(&(*exp.left));  
+        std::size_t h3 = std::hash<int*>{}(&(*exp.right));
+        return h1 ^ (h2 << 1) ^ (h3 << 2);  // Combine the hashes
+    }
+};
+
+struct ExpPairEqual {
+    bool operator()(const ExpPair& lhs, const ExpPair& rhs) const {
+        return lhs.exp_phrase == rhs.exp_phrase && lhs.left == rhs.left && lhs.right == rhs.right;
+    }
+};
+
+std::unordered_map<std::pair<int, int>, std::unordered_set<ExpPair, ExpPairHash, ExpPairEqual>, pair_int_hash> exp_pairs; 
 
 // List of explicit and non explicit phrases
 PhraseLinkedList plist;
 
 // Interval Tree for the non-explicit phrases
-typedef IntervalTree<int, PhraseNode*> ITree;
-ITree phrase_tree;
+RBIntervalTree<PhraseNode*> phrase_tree;
 
 // Timing information
 std::chrono::duration<double> prepare_ref_time{0.0};
@@ -85,6 +113,7 @@ std::chrono::duration<double> create_heap_time{0.0};
 std::chrono::duration<double> phrase_boundary_time{0.0};
 std::chrono::duration<double> source_boundary_time{0.0};
 std::chrono::duration<double> build_interval_time{0.0};
+std::chrono::duration<double> update_interval_time{0.0};
 std::chrono::duration<double> nonexplicit_phrase_time{0.0};
 std::chrono::duration<double> explicit_phrase_time{0.0};
 std::chrono::duration<double> hash_range_time{0.0};
@@ -249,6 +278,219 @@ void printPhrase(PhraseNode* curr_phrase)
     }
 }
 
+/**
+ * @brief Print supposed phrase
+ */
+
+void printSupposedPhrase(PhraseNode* curr_phrase, std::list<int>::iterator leftIt)
+{
+    while (leftIt != curr_phrase->content.begin()){
+        leftIt = std::prev(leftIt);
+    }
+
+    std::string content = "";
+    while(leftIt != curr_phrase->content.end())
+    {
+        content = content + " " + printSymbol(*leftIt);
+        leftIt++;
+    }
+    spdlog::trace("Phrase (explicit): \033[1;31m{}\033[0m", content);
+}
+
+/**
+ * @brief Calculate number of invalid consecutive same chars in the phrases
+ * For example, eeee -> 1 (the 2nd ee)
+ * For example, aaa -> 1 (the 2nd aa)
+ * For example, iiiii -> 2 (2nd and 4th ii)
+ * Assumes run after phrase and source boundary so no crossing boundary
+ */
+
+int invalidSameCharPair(int letter)
+{
+    PhraseNode* curr_phrase = plist.getHead();
+    int invalidNexpCount = 0;
+    int invalidExpCount = 0;
+    int count;
+    int countNexp = 0;
+    int countExp = 0;
+    int left_elem = -1;
+    int right_elem = -1;
+    while(curr_phrase != nullptr)
+    {
+        if (!(curr_phrase->exp))
+        {
+            RefNode* leftNode = rlist.findNearestRef(curr_phrase->lnode);
+            RefNode* rightNode = rlist.findNearestRef(curr_phrase->rnode);
+            while (leftNode != rightNode->next)
+            {
+                if (left_elem == -1){
+                    left_elem = leftNode->val;
+                    leftNode = leftNode->next;
+                    continue;
+                }
+                right_elem = leftNode->val;
+                if (left_elem == letter && right_elem == letter){
+                    count++;
+                    countNexp++;
+                }
+                else{
+                    count = 0;
+                }
+                if (count > 0 && count % 2 == 0){
+                    invalidNexpCount++;
+                }
+                left_elem = right_elem;
+                leftNode = leftNode->next;
+            }
+            
+        }
+        else
+        {
+            auto it = curr_phrase->content.begin();
+            while(it != curr_phrase->content.end())
+            {
+                if (left_elem == -1){
+                    left_elem = *it;
+                    it++;
+                    continue;
+                }
+                right_elem = *it;
+                if (left_elem == letter && right_elem == letter){
+                    count++;
+                    countExp++;
+                }
+                else{
+                    count = 0;
+                }
+                if (count > 0 && count % 2 == 0){
+                    invalidExpCount++;
+                }
+                left_elem = right_elem;
+                it++;
+            }
+        } 
+        curr_phrase = curr_phrase->next;
+    }
+    spdlog::trace("Number of Non-explicit Occurences: {}", countNexp);
+    spdlog::trace("Invalid Non-explicit Count: {}", invalidNexpCount);
+    spdlog::trace("Number of Explicit Occurences: {}", countExp);
+    spdlog::trace("Invalid Explicit Count: {}", invalidExpCount);
+    return invalidNexpCount + invalidExpCount;
+}
+
+/**
+ * @brief Checks whether the frequencies in the heap is correct 
+ */
+
+bool checkHeap()
+{
+    std::unordered_map<std::pair<int,int>, int, pair_int_hash> pair_count;
+    PhraseNode* curr_phrase = plist.getHead();
+    int left_elem = -1;
+    int right_elem = -1;
+    while(curr_phrase != nullptr)
+    {
+        if (!(curr_phrase->exp))
+        {
+            RefNode* leftNode = rlist.findNearestRef(curr_phrase->lnode);
+            RefNode* rightNode = rlist.findNearestRef(curr_phrase->rnode);
+            while (leftNode != rightNode->next)
+            {
+                if (left_elem == -1){
+                    left_elem = leftNode->val;
+                    leftNode = leftNode->next;
+                    continue;
+                }
+                right_elem = leftNode->val;
+                pair_count[{left_elem, right_elem}]++;
+                left_elem = right_elem;
+                leftNode = leftNode->next;
+            }
+        }
+        else
+        {
+            auto it = curr_phrase->content.begin();
+            while(it != curr_phrase->content.end())
+            {
+                if (left_elem == -1){
+                    left_elem = *it;
+                    it++;
+                    continue;
+                }
+                right_elem = *it;
+                pair_count[{left_elem, right_elem}]++;
+                left_elem = right_elem;
+                it++;
+            }
+        } 
+        curr_phrase = curr_phrase->next;
+    }
+
+    for (auto p : pair_count)
+    {
+        std::pair<int,int> key = p.first;
+        int value = p.second;
+        if (value > 1)
+        {
+            Tpair new_pair;
+            new_pair.left = key.first;
+            new_pair.right = key.second;
+            int nid = searchHash(Hash,new_pair);
+            if (nid == -1){
+                spdlog::error("Pair ({},{}) does not exist in heap but should!", printSymbol(key.first), printSymbol(key.second));
+                return false;
+            }
+            else{
+                Trecord* nrec = &Rec.records[nid];
+                if (value != nrec->freq){
+                    spdlog::error("Pair ({},{}) | Heap: {} , Actual: {}",  printSymbol(key.first), printSymbol(key.second), nrec->freq, value);
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+/**
+ * @brief Calculates the size of the phrases currently
+ */
+
+int checkPhraseSizes()
+{
+    PhraseNode* curr_phrase = plist.getHead();
+    int nexp_length = 0;
+    int exp_length = 0;
+    int total_length;
+    while(curr_phrase != nullptr)
+    {
+        if (!(curr_phrase->exp)){
+            int length = 0;
+            RefNode* left_elem = rlist.findNearestRef(curr_phrase->lnode);
+            RefNode* right_elem = rlist.findNearestRef(curr_phrase->rnode);
+            while (left_elem != right_elem)
+            {
+                if (left_elem->deleted == false){
+                    length++;
+                }
+                left_elem = left_elem->next;
+            }
+            length++;
+            nexp_length += length;
+        }
+        else{
+            exp_length += curr_phrase->content.size();
+        } 
+        curr_phrase = curr_phrase->next;
+    }
+    
+    total_length = nexp_length + exp_length;
+    spdlog::debug("Non explicit phrase chars: {}", nexp_length);
+    spdlog::debug("Explicit phrase chars: {}", exp_length);
+    spdlog::debug("Total characters: {}", total_length);
+    return total_length;
+}
+
 
 /**
  * @brief Prints the current phrases. Debug purposes only.
@@ -275,7 +517,7 @@ void printPhraseList()
             spdlog::trace("Phrase (Not explicit): {}", content);
         }
         else{
-            for (unsigned int i : curr_phrase->content){
+            for (int i : curr_phrase->content){
                 content += printSymbol(i) + " ";
             }
             spdlog::trace("Phrase (explicit): \033[1;31m{}\033[0m", content);
@@ -283,6 +525,72 @@ void printPhraseList()
         curr_phrase = curr_phrase->next;
     }
     spdlog::trace("");
+}
+
+/**
+ * @brief Check the exp_pairs stored.
+ * 
+ * At any point in time the exp_pairs should be up to date
+ * 
+ */
+bool checkExpPairs()
+{
+    std::unordered_map<std::pair<int, int>, std::unordered_set<ExpPair, ExpPairHash, ExpPairEqual>, pair_int_hash> exp_pairs_tmp(exp_pairs);
+    PhraseNode* curr_phrase = plist.getHead();
+    while(curr_phrase != nullptr)
+    {
+        int sameCharCount = 1;
+        if (curr_phrase->exp)
+        {
+            auto pit = curr_phrase->content.begin();
+            auto it = std::next(pit);
+            while (it != curr_phrase->content.end())
+            {
+                if (*it == *pit){
+                    sameCharCount++;
+                }
+                else{
+                    sameCharCount = 1;
+                }
+                if (sameCharCount == 1 || sameCharCount % 2 == 0)
+                {
+                    if (exp_pairs_tmp[{*pit,*it}].find(ExpPair(curr_phrase, pit, it)) == exp_pairs_tmp[{*pit,*it}].end()){
+                        printPhrase(curr_phrase);
+                        spdlog::error("Pair missing: ({},{})", printSymbol(*pit), printSymbol(*it));
+                        // std::cout << "Address of phrase: " << &(*curr_phrase) << std::endl;
+                        // std::cout << "Address of left element pointed to: " << &(*pit) << std::endl;
+                        // std::cout << "Address of right element pointed to: " << &(*it) << std::endl;
+                        return false;
+                    }
+                    else{
+                        exp_pairs_tmp[{*pit,*it}].erase(ExpPair(curr_phrase, pit, it));
+                    }
+                }
+                else
+                {
+                    if (exp_pairs_tmp[{*pit,*it}].find(ExpPair(curr_phrase, pit, it)) != exp_pairs_tmp[{*pit,*it}].end()){
+                        printPhrase(curr_phrase);
+                        spdlog::error("Pair exists that should not exist: ({},{})", printSymbol(*pit), printSymbol(*it));
+                        return false;
+                    }
+                }
+                pit = it;
+                it = std::next(it);
+            }
+        }        
+        curr_phrase = curr_phrase->next;
+    }
+    for (const auto& entry : exp_pairs_tmp)
+    {
+        std::pair<int, int> key = entry.first;
+        if (exp_pairs_tmp[key].size() != 0){
+            spdlog::error("Key should not exist: ({},{}) : {} pairs", printSymbol(key.first), printSymbol(key.second), exp_pairs_tmp[key].size());
+        }
+        return false;
+    }
+
+    spdlog::debug("Everything is correct");
+    return true;
 }
 
 /**
@@ -464,10 +772,10 @@ void populatePhrases(std::ifstream& pfile)
     pfile.seekg(0, std::ios::beg);
 
     // Debug
-    if (verbosity == 2){
-        spdlog::trace("The non-explicit phrases at the start");
-        printPhraseList();
-    }
+    // if (verbosity == 2){
+    //     spdlog::trace("The non-explicit phrases at the start");
+    //     printPhraseList();
+    // }
 }
 
 /**
@@ -476,26 +784,150 @@ void populatePhrases(std::ifstream& pfile)
 
 void buildIntervalTree()
 {
-    ITree::interval_vector phrase_intervals;
     PhraseNode* curr_phrase = plist.getHead();
     while(curr_phrase != nullptr)
     {
         if (!curr_phrase->exp){
-            phrase_intervals.push_back(ITree::interval(rlist.findNearestRef(curr_phrase->lnode)->pos, 
-                                                        rlist.findNearestRef(curr_phrase->rnode)->pos, 
-                                                        curr_phrase));
+            int lRange = rlist.findNearestRef(curr_phrase->lnode)->pos;
+            int rRange = rlist.findNearestRef(curr_phrase->rnode)->pos;
+            phrase_tree.insert({lRange, rRange}, curr_phrase);
         }
         curr_phrase = curr_phrase->next;
     }
-    
-    ITree temp_tree(std::move(phrase_intervals));
-    phrase_tree = temp_tree;
+}
 
-    // Some debug test
-    // ITree::interval_vector phrase_results;
-    // phrase_results = phrase_tree.findContained(0,4);
-    // spdlog::info("Results of finding (0,4): {}", phrase_results.size());
-    
+/**
+ * @brief Ensures that consecutive same characters >2 do not have overlapping entries in exp_pairs.
+ * When adding from left, we might have to update exp_pairs all pairs of exp_pairs. (ie. e + ee -> ee + e)
+ * When adding from right, we check if the consecutive same characters are odd or even
+ */
+
+void updateExpPairs(PhraseNode* p, std::list<int>::iterator it, bool leftInsert)
+{
+    int sameCharCount = 1;
+    int letter = *it;
+    if (leftInsert)
+    {
+        auto nextIt = std::next(it);
+        while(nextIt != p->content.end())
+        {
+            if (*nextIt != letter){
+                break;
+            }
+            else{
+                sameCharCount++;
+                if (sameCharCount % 2 == 0){
+                    exp_pairs[{letter,letter}].insert(ExpPair(p, it, nextIt));
+                }
+                else{
+                    exp_pairs[{letter,letter}].erase(ExpPair(p, it, nextIt));
+                }
+            }
+            it = nextIt;
+            nextIt = std::next(nextIt);
+        }
+    }
+    else
+    {
+        while (it != p->content.begin())
+        {
+            if (*it != letter){
+                it = std::next(it);
+                break;
+            }
+            it = std::prev(it);
+        }
+        if (it == p->content.begin() && *it != letter){
+            it = std::next(it);
+        }
+        auto nextIt = std::next(it);
+        while(nextIt != p->content.end())
+        {
+            if (*nextIt != letter){
+                break;
+            }
+            else{
+                sameCharCount++;
+                if (sameCharCount % 2 == 0){
+                    exp_pairs[{letter,letter}].insert(ExpPair(p, it, nextIt));
+                }
+                else{
+                    exp_pairs[{letter,letter}].erase(ExpPair(p, it, nextIt));
+                }
+            }
+            it = nextIt;
+            nextIt = std::next(nextIt);
+        }       
+    }
+}
+
+/** 
+ * @brief Ensures that consecutive same characters >2 do not have overlapping entries in exp_pairs.
+ * Used when merging explicit phrases together
+ */
+
+void updateMergeExpPairs(PhraseNode* p, std::list<int>::iterator it)
+{
+    int letter = *it;
+    // Find the first occurence of the letter
+    while (it != p->content.begin())
+    {
+        if (*it != letter){
+            it = std::next(it);
+            break;
+        }
+        it = std::prev(it);
+    }
+    if (it == p->content.begin() && *it != letter){
+        it = std::next(it);
+    }
+    auto nextIt = std::next(it);
+    int sameCharCount = 1;
+    while(nextIt != p->content.end())
+    {
+        if (*nextIt != letter){
+            break;
+        }
+        else{
+            sameCharCount++;
+            if (sameCharCount % 2 == 0){
+                exp_pairs[{letter,letter}].insert(ExpPair(p, it, nextIt));
+            }
+            else{
+                exp_pairs[{letter,letter}].erase(ExpPair(p, it, nextIt));
+            }
+            it = nextIt;
+            nextIt = std::next(nextIt);
+        }
+    }
+}
+
+/**
+ * @brief Deletes the exp pairs assigned to one exp phrase and assigns to another exp phrase 
+ */
+
+void reassignExpPairs(PhraseNode* origPhrase, PhraseNode* newPhrase)
+{
+    auto it = origPhrase->content.begin();
+    auto nextIt = std::next(it);
+    int sameCharCount = 1;
+    while(nextIt != origPhrase->content.end())
+    {
+        if (*it == *nextIt){
+            sameCharCount++;
+        }
+        else{
+            sameCharCount = 1;
+        }
+
+        if (sameCharCount == 1 || sameCharCount % 2 == 0)
+        {
+            exp_pairs[{*it, *nextIt}].erase(ExpPair(origPhrase, it, nextIt));
+            exp_pairs[{*it, *nextIt}].insert(ExpPair(newPhrase, it, nextIt));
+        }
+        it = nextIt;
+        nextIt = std::next(nextIt);
+    }
 }
 
 /**
@@ -519,37 +951,90 @@ void phraseBoundaries(int left_elem, int right_elem)
     // Iterate through the phrases in the phrase list
     while (curr_phrase != nullptr) 
     {
+        curr_phrase->ltmp = -1;
+        curr_phrase->rtmp = -1;
+
         PhraseNode* next_phrase = curr_phrase->next;
         // If there is a next phrase, check the phrase boundaries.
         if (next_phrase != nullptr)
         {
-            // Update the rnode and lnode of both the current and next phrase before doing anything.
-            if (!curr_phrase->exp){
-                curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
-                curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode);
-            }
-            if (!next_phrase->exp){
-                next_phrase->lnode = rlist.findNearestRef(next_phrase->lnode);
-                next_phrase->rnode = rlist.findNearestRef(next_phrase->rnode);
-            }
-            
             // Both phrases not explicit
             if (!(curr_phrase->exp) && !(next_phrase->exp))
             {
-                if (curr_phrase->rnode->val == left_elem && next_phrase->lnode->val == right_elem)
+                if (rlist.findNearestRef(curr_phrase->rnode)->val == left_elem && rlist.findNearestRef(next_phrase->lnode)->val == right_elem)
                 {
-                    std::list<unsigned int> content;
+                    // Indicates whether a non-explicit phrase got deleted.
+                    bool deleteCurr = false;
+                    bool deleteNext = false;
+
+                    std::list<int> content;
                     content.push_back(left_elem);
                     content.push_back(right_elem);
+
+                    // First remove the offending entries in the tree.
+                    //spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                    auto update_interval_start = std::chrono::high_resolution_clock::now();
+                    phrase_tree.remove({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                    auto update_interval_end = std::chrono::high_resolution_clock::now();
+                    update_interval_time += update_interval_end - update_interval_start;
+                    //spdlog::trace("Removing ({},{}) from tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                    update_interval_start = std::chrono::high_resolution_clock::now();
+                    phrase_tree.remove({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
+                    update_interval_end = std::chrono::high_resolution_clock::now();
+                    update_interval_time += update_interval_end - update_interval_start;
+
+                    // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
+                    curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
+                    curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode);
+                    next_phrase->lnode = rlist.findNearestRef(next_phrase->lnode);
+                    next_phrase->rnode = rlist.findNearestRef(next_phrase->rnode);
+
                     curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode->prev);
                     next_phrase->lnode = rlist.findForwardRef(next_phrase->lnode);
-                    plist.insert(next_phrase, content); 
+                    PhraseNode* expPhrase = plist.insert(next_phrase, content);
+
+                    // Add the new exp pair to exp_pairs
+                    auto l = expPhrase->content.begin();
+                    auto r = std::prev(expPhrase->content.end());
+                    exp_pairs[{*l, *r}].insert(ExpPair(expPhrase, l, r));
+                    // Only two characters guaranteed so do not have to check consecutive characters
+
                     // If the current or next phrases are empty we delete
-                    if (curr_phrase->rnode == nullptr || curr_phrase->lnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){ 
+                    if (curr_phrase->rnode == nullptr || curr_phrase->lnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){
+                        deleteCurr = true; 
                         curr_phrase = plist.remove(curr_phrase);
                     }
                     if (next_phrase->rnode == nullptr || next_phrase->lnode == nullptr || next_phrase->lnode->pos > next_phrase->rnode->pos){
+                        deleteNext = true;
                         next_phrase = plist.remove(next_phrase);  
+                    }
+
+                    // Update the tree with the new entries
+                    if (!deleteCurr && !deleteNext){
+                        //spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                        update_interval_start = std::chrono::high_resolution_clock::now();
+                        phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                        update_interval_end = std::chrono::high_resolution_clock::now();
+                        update_interval_time += update_interval_end - update_interval_start;
+                        //spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                        update_interval_start = std::chrono::high_resolution_clock::now();
+                        phrase_tree.insert({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
+                        update_interval_end = std::chrono::high_resolution_clock::now();
+                        update_interval_time += update_interval_end - update_interval_start;
+                    }
+                    else if (deleteCurr && !deleteNext){
+                        //spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                        update_interval_start = std::chrono::high_resolution_clock::now();
+                        phrase_tree.insert({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
+                        update_interval_end = std::chrono::high_resolution_clock::now();
+                        update_interval_time += update_interval_end - update_interval_start;
+                    }
+                    else if (!deleteCurr && deleteNext){
+                        //spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                        update_interval_start = std::chrono::high_resolution_clock::now();
+                        phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                        update_interval_end = std::chrono::high_resolution_clock::now();
+                        update_interval_time += update_interval_end - update_interval_start;
                     }
                     continue;
                 }
@@ -557,13 +1042,44 @@ void phraseBoundaries(int left_elem, int right_elem)
             // Current phrase not explicit and next phrase explicit
             else if (!(curr_phrase->exp) && (next_phrase->exp))
             {
-                if ((curr_phrase->rnode->val == left_elem) && (next_phrase->content.front() == right_elem))
+                if ((rlist.findNearestRef(curr_phrase->rnode)->val == left_elem) && (next_phrase->content.front() == right_elem))
                 {
+                    // Indicates whether a non-explicit phrase got deleted.
+                    bool deleteCurr = false;
+                    // First remove the offending entry from the tree
+                    //spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                    auto update_interval_start = std::chrono::high_resolution_clock::now();
+                    phrase_tree.remove({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                    auto update_interval_end = std::chrono::high_resolution_clock::now();
+                    update_interval_time += update_interval_end - update_interval_start;
+
+                    // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
+                    curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
+                    curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode);
+
+                    auto r = next_phrase->content.begin();
                     next_phrase->content.push_front(left_elem);
+                    auto l = next_phrase->content.begin();
+                    // Add the new exp pair to exp_pairs
+                    exp_pairs[{*l, *r}].insert(ExpPair(next_phrase, l, r));
+                    // If consecutive characters, then might have to change exp_pairs (i.e e + ee -> ee + e)
+                    if (*l == *r){
+                        updateExpPairs(next_phrase, l, true);
+                    }
                     curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode->prev);
                     // If the non-explicit phrase is empty we delete it.
                     if (curr_phrase->rnode == nullptr || curr_phrase->lnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){ 
+                        deleteCurr = true;
                         curr_phrase = plist.remove(curr_phrase);
+                    }
+
+                    // Update the tree with the new entry
+                    if (!deleteCurr){
+                        //spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                        update_interval_start = std::chrono::high_resolution_clock::now();
+                        phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                        update_interval_end = std::chrono::high_resolution_clock::now();
+                        update_interval_time += update_interval_end - update_interval_start;
                     }
                     continue;
                 }
@@ -571,20 +1087,59 @@ void phraseBoundaries(int left_elem, int right_elem)
             // Current phrase explicit and next phrase not explicit
             else if ((curr_phrase->exp) && !(next_phrase->exp))
             {
-                if ((curr_phrase->content.back() == left_elem) && (next_phrase->lnode->val == right_elem))
+                if ((curr_phrase->content.back() == left_elem) && (rlist.findNearestRef(next_phrase->lnode)->val == right_elem))
                 {
+                    // Indicates whether a non-explicit phrase got deleted.
+                    bool deleteNext = false;
+                    // First remove the offending entry from the tree
+                    //spdlog::trace("Removing ({},{}) from tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                    auto update_interval_start = std::chrono::high_resolution_clock::now();
+                    phrase_tree.remove({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
+                    auto update_interval_end = std::chrono::high_resolution_clock::now();
+                    update_interval_time += update_interval_end - update_interval_start;
+
+                    // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
+                    next_phrase->lnode = rlist.findNearestRef(next_phrase->lnode);
+                    next_phrase->rnode = rlist.findNearestRef(next_phrase->rnode);
+
+                    auto l = std::prev(curr_phrase->content.end());
                     curr_phrase->content.push_back(right_elem);
+                    auto r = std::prev(curr_phrase->content.end());
+                    // Add the new exp pair to exp_pairs
+                    exp_pairs[{*l, *r}].insert(ExpPair(curr_phrase, l, r));
+                    // If consecutive characters, then might have to change exp_pairs (i.e e + ee -> ee + e)
+                    if (*l == *r){
+                        updateExpPairs(curr_phrase, r, false);
+                    }
                     next_phrase->lnode = rlist.findForwardRef(next_phrase->lnode);
                     if (next_phrase->rnode == nullptr || next_phrase->lnode == nullptr || next_phrase->lnode->pos > next_phrase->rnode->pos){
+                        deleteNext = true;
                         next_phrase = plist.remove(next_phrase);
+                    }
+
+                    // Update the tree with the new entry
+                    if (!deleteNext){
+                        //spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                        update_interval_start = std::chrono::high_resolution_clock::now();
+                        phrase_tree.insert({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
+                        update_interval_end = std::chrono::high_resolution_clock::now();
+                        update_interval_time += update_interval_end - update_interval_start;
                     }
                     continue;
                 }
             }
             // Both explicit phrases, move content of next phrase into first phrase and delete next phrase
             else{
+                auto l = std::prev(curr_phrase->content.end());
+                auto r = next_phrase->content.begin();
+                reassignExpPairs(next_phrase, curr_phrase); // Reassigns the pairs in next phrase to current phrase
                 curr_phrase->content.splice(curr_phrase->content.end(), next_phrase->content);
-                next_phrase = plist.remove(next_phrase);
+                next_phrase = plist.remove(next_phrase); // Should be safe to call remove. The pointers within content should still be valid.
+                // Add the new exp pair to exp_pairs
+                exp_pairs[{*l, *r}].insert(ExpPair(curr_phrase, l, r));
+                if (*l == *r){
+                    updateMergeExpPairs(curr_phrase, l);
+                }
                 continue;
             }
 
@@ -597,10 +1152,10 @@ void phraseBoundaries(int left_elem, int right_elem)
     }
 
     // Debug
-    if (verbosity == 2){
-        spdlog::trace("Phrase list after phrase boundary condition.");
-        printPhraseList();
-    }
+    // if (verbosity == 2){
+    //     spdlog::trace("Phrase list after phrase boundary condition.");
+    //     printPhraseList();
+    // }
 }
 
 /**
@@ -639,23 +1194,52 @@ void sourceBoundaries(int left_elem, int right_elem)
                 PhraseNode* prev_phrase = curr_phrase->prev;
                 // If the previous phrase is explicit, we can add directly to it.
                 if (prev_phrase != nullptr && prev_phrase->exp){
+                    auto l = std::prev(prev_phrase->content.end());
                     prev_phrase->content.push_back(right_elem);
+                    auto r = std::prev(prev_phrase->content.end());
+                    // Add the new exp pair to exp_pairs
+                    exp_pairs[{*l,*r}].insert(ExpPair(prev_phrase, l, r));
+                    if (*l == *r){
+                        updateExpPairs(prev_phrase, r, false);
+                    }
                 }
                 // We have to create new explicit phrase anyways
                 else{
-                    std::list<unsigned int> content;
+                    std::list<int> content;
                     content.push_back(right_elem);
                     plist.insert(curr_phrase, content);
                 }
-                
+
+                // Indicates whether a non-explicit phrase got deleted.
+                bool deleteCurr = false;
+                // First remove the offending entry from the tree
+                //spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                auto update_interval_start = std::chrono::high_resolution_clock::now();
+                phrase_tree.remove({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                auto update_interval_end = std::chrono::high_resolution_clock::now();
+                update_interval_time += update_interval_end - update_interval_start;
+
+                // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
+                curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
+                curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode);
+
                 // Update the information of the current phrase (left node pointer & existence).
                 curr_phrase->lnode = rlist.findForwardRef(curr_phrase->lnode);                    
                 // If non-explicit phrase is empty we delete it
                 if (curr_phrase->lnode == nullptr || curr_phrase->lnode->pos > curr_phrase->rnode->pos){ 
+                    deleteCurr = true;
                     curr_phrase = plist.remove(curr_phrase); // Removes the current phrase and sets the curr phrase to be the previous phrase
-                    continue;
                 }
-                curr_phrase = curr_phrase->prev; // If it gets to here then we need to manually update the curr_phrase for the next iteration to be the previous phrase which should be guaranteed to exist.
+
+                // Update the tree with the new entry
+                if (!deleteCurr){
+                    //spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                    update_interval_start = std::chrono::high_resolution_clock::now();
+                    phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                    update_interval_end = std::chrono::high_resolution_clock::now();
+                    update_interval_time += update_interval_end - update_interval_start;
+                }
+
                 continue;
             }
             
@@ -668,11 +1252,18 @@ void sourceBoundaries(int left_elem, int right_elem)
                 PhraseNode* next_phrase = curr_phrase->next;                    
                 // If the next phrase is explicit, we can add directly to it.
                 if (next_phrase != nullptr && next_phrase->exp){
+                    auto r = next_phrase->content.begin();
                     next_phrase->content.push_front(left_elem);
+                    auto l = next_phrase->content.begin();
+                    // Add the new exp pair to exp_pairs
+                    exp_pairs[{*l,*r}].insert(ExpPair(next_phrase, l, r));
+                    if (*l == *r){
+                        updateExpPairs(next_phrase, l, true);
+                    }
                 }
                 // We have to create new explicit phrase anyways
                 else{
-                    std::list<unsigned int> content;
+                    std::list<int> content;
                     content.push_back(left_elem);
                     if (next_phrase == nullptr){
                         plist.push_back(content);
@@ -682,12 +1273,36 @@ void sourceBoundaries(int left_elem, int right_elem)
                     }
                 }
 
+                // Indicates whether a non-explicit phrase got deleted.
+                bool deleteCurr = false;
+                // First remove the offending entry from the tree
+                //spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                auto update_interval_start = std::chrono::high_resolution_clock::now();
+                phrase_tree.remove({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                auto update_interval_end = std::chrono::high_resolution_clock::now();
+                update_interval_time += update_interval_end - update_interval_start;
+
+                // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
+                curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
+                curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode);
+
                 // Update the information of the current phrase (right node pointer & existence).
                 curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode->prev);                       
                 // If non-explicit phrase is empty we delete it
-                if (curr_phrase->rnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){ 
+                if (curr_phrase->rnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){
+                    deleteCurr = true; 
                     curr_phrase = plist.remove(curr_phrase); // Removes the current phrase and sets the curr phrase to be the previous phrase
                 }
+
+                // Update the tree with the new entry
+                if (!deleteCurr){
+                    //spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                    update_interval_start = std::chrono::high_resolution_clock::now();
+                    phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                    update_interval_end = std::chrono::high_resolution_clock::now();
+                    update_interval_time += update_interval_end - update_interval_start;
+                }
+
                 continue; // If it gets to here then the next iteration will have the same curr phrase.
             }
         }
@@ -696,24 +1311,40 @@ void sourceBoundaries(int left_elem, int right_elem)
             PhraseNode* prev_phrase = curr_phrase->prev;
             // If prev phrase is also explicit merge into the prev phrase
             if (prev_phrase != nullptr && prev_phrase->exp){
+                auto l = std::prev(prev_phrase->content.end());
+                auto r = curr_phrase->content.begin();
+                reassignExpPairs(curr_phrase, prev_phrase); // Reassigns the pairs in curr phrase to previous phrase
                 prev_phrase->content.splice(prev_phrase->content.end(), curr_phrase->content);
                 curr_phrase = plist.remove(curr_phrase); // Deletes the current phrase and sets the current phrase to be the previous phrase
+                // Add the new exp pair to exp_pairs
+                exp_pairs[{*l, *r}].insert(ExpPair(prev_phrase, l, r));
+                if (*l == *r){
+                    updateMergeExpPairs(prev_phrase, l);
+                }
                 continue;
             }
             PhraseNode* next_phrase = curr_phrase->next;
             if (next_phrase != nullptr && next_phrase->exp){
+                auto l = std::prev(curr_phrase->content.end());
+                auto r = next_phrase->content.begin();
+                reassignExpPairs(next_phrase, curr_phrase); // Reassigns the pairs in next phrase to current phrase
                 curr_phrase->content.splice(curr_phrase->content.end(), next_phrase->content);
                 plist.remove(next_phrase); // Deletes the next phrase
+                // Add the new exp pair to exp_pairs
+                exp_pairs[{*l, *r}].insert(ExpPair(curr_phrase, l, r));
+                if (*l == *r){
+                    updateMergeExpPairs(curr_phrase, l);
+                }
                 continue; // If it gets to here then the next iteration will have the same curr phrase.
             }
         }
         curr_phrase = curr_phrase->next;
     }
     // Debug
-    if (verbosity == 2){
-        spdlog::trace("Phrase list after source boundary condition.");
-        printPhraseList();
-    }
+    // if (verbosity == 2){
+    //     spdlog::trace("Phrase list after source boundary condition.");
+    //     printPhraseList();
+    // }
 }
 
 /**
@@ -726,9 +1357,9 @@ void sourceBoundaries(int left_elem, int right_elem)
  */
 void decreaseFrequency(int left, int right)
 {
-    if (verbosity == 2){
-        spdlog::trace("Decrease frequency: ({},{})", printSymbol(left), printSymbol(right));
-    }
+    // if (verbosity == 2){
+    //     spdlog::trace("Decrease frequency: ({},{})", printSymbol(left), printSymbol(right));
+    // }
     Tpair new_pair;
     new_pair.left = left;
     new_pair.right = right;
@@ -748,9 +1379,9 @@ void decreaseFrequency(int left, int right)
  */
 void increaseFrequency(int left, int right)
 {
-    if (verbosity == 2){
-        spdlog::trace("Increase frequency: ({},{})", printSymbol(left), printSymbol(right));
-    }
+    // if (verbosity == 2){
+    //     spdlog::trace("Increase frequency: ({},{})", printSymbol(left), printSymbol(right));
+    // }
     Tpair new_pair;
     new_pair.left = left;
     new_pair.right = right;
@@ -781,6 +1412,8 @@ void increaseFrequency(int left, int right)
  */
 void repair(std::ofstream& R, std::ofstream& C)
 {
+    int start_size = psize;
+
     // Write alpha to R file
     R.write(reinterpret_cast<const char*>(&alpha), sizeof(int));
     if (!R) {
@@ -791,6 +1424,12 @@ void repair(std::ofstream& R, std::ofstream& C)
     if (!R) {
         spdlog::error("Error writing map to R file");
     }
+
+    // Build the tree
+    auto build_interval_start = std::chrono::high_resolution_clock::now();
+    buildIntervalTree(); 
+    auto build_interval_end = std::chrono::high_resolution_clock::now();
+    build_interval_time += build_interval_end - build_interval_start;
 
     oid = extractMax(&Heap);
     while (oid != -1)
@@ -824,16 +1463,26 @@ void repair(std::ofstream& R, std::ofstream& C)
         auto sbound_end = std::chrono::high_resolution_clock::now();
         source_boundary_time += sbound_end - sbound_start;
         
+        // Calculate number of invalid consecutive pairs of chars
+        int maxLeft = orec->pair.left;
+        int maxRight = orec->pair.right;
+        int max_freq = orec->freq;
+        int invalidFreq = 0;
+        if (verbosity == 2)
+        {
+            if (maxLeft == maxRight){
+                checkPhraseSizes();
+                spdlog::trace("Same Char Pair: ({},{})", printSymbol(maxLeft), printSymbol(maxRight));
+                invalidFreq = invalidSameCharPair(orec->pair.left);
+            }
+        }
+
         std::pair<int,int> max_pair = {left_elem,right_elem};
         // Check if the current max pair is in hash ranges, if is then have to go through non-explicit phrases.
         if (hash_ranges.find(max_pair) != hash_ranges.end())
         {
+            spdlog::trace("Going through the non-explicit phrases");
             std::deque<int> ranges = hash_ranges[max_pair];
-
-            auto build_interval_start = std::chrono::high_resolution_clock::now();
-            buildIntervalTree(); 
-            auto build_interval_end = std::chrono::high_resolution_clock::now();
-            build_interval_time += build_interval_end - build_interval_start;
 
             auto nexp_start = std::chrono::high_resolution_clock::now();
             for (int curr_range : ranges)
@@ -851,20 +1500,24 @@ void repair(std::ofstream& R, std::ofstream& C)
                     continue;
                 }  
                 
-                // Create Interval Tree
-                ITree::interval_vector phrase_results;
+                // Query the tree
+                std::vector<PhraseNode*> phrase_results;
                 spdlog::trace("Pair to replace: ({},{})", lref->pos, rref->pos);
-                phrase_results = phrase_tree.findContained(lref->pos,rref->pos); // Fully contained within interval
+                phrase_results = phrase_tree.findContained({lref->pos,rref->pos}); // Fully contained within interval
                 spdlog::trace("{} non-explicit phrases contain the pair to replace.", phrase_results.size());
                 for (int i = 0; i < phrase_results.size(); i++)
                 {
-                    PhraseNode* nexp_phrase = phrase_results[i].value;
+                    PhraseNode* nexp_phrase = phrase_results[i];
                     int leftElem =  lref->val;
                     int rightElem = rref->val;
                     int leftleftElem;
                     int rightrightElem;
+
+                    int lRange = rlist.findNearestRef(phrase_results[i]->lnode)->pos;
+                    int rRange = rlist.findNearestRef(phrase_results[i]->rnode)->pos;
+
                     // If range fully contained within range then we can do the decrease and increase frequencies
-                    if (phrase_results[i].start != lref->pos && phrase_results[i].stop != rref->pos)
+                    if (lRange != lref->pos && rRange != rref->pos)
                     {
                         leftleftElem = rlist.findNearestRef(lref->prev)->val;
                         rightrightElem = rlist.findForwardRef(rref)->val;
@@ -875,7 +1528,7 @@ void repair(std::ofstream& R, std::ofstream& C)
 
                     }
                     // If range touches the edges
-                    else if (phrase_results[i].start == lref->pos && phrase_results[i].stop == rref->pos)
+                    else if (lRange == lref->pos && rRange == rref->pos)
                     {
                         if (nexp_phrase->prev != nullptr && nexp_phrase->prev->exp){
                             leftleftElem = nexp_phrase->prev->content.back();
@@ -883,24 +1536,31 @@ void repair(std::ofstream& R, std::ofstream& C)
                             increaseFrequency(leftleftElem, n);
                         } 
                         else if (nexp_phrase->prev != nullptr && !nexp_phrase->prev->exp) {
-                            leftleftElem = rlist.findNearestRef(nexp_phrase->prev->rnode)->val;
+                            if (nexp_phrase->prev->rtmp == -1)
+                                leftleftElem = rlist.findNearestRef(nexp_phrase->prev->rnode)->val;
+                            else
+                                leftleftElem = nexp_phrase->prev->rtmp;
                             decreaseFrequency(leftleftElem, leftElem);
                             increaseFrequency(leftleftElem, n);
                         }
-
+                        nexp_phrase->ltmp = n;
                         if (nexp_phrase->next != nullptr && nexp_phrase->next->exp){
                             rightrightElem = nexp_phrase->next->content.front();
                             decreaseFrequency(rightElem, rightrightElem);
                             increaseFrequency(n, rightrightElem);
                         } 
                         else if (nexp_phrase->next != nullptr && !nexp_phrase->next->exp) {
-                            rightrightElem = rlist.findNearestRef(nexp_phrase->next->lnode)->val;
+                            if (nexp_phrase->next->ltmp == -1)
+                                rightrightElem = rlist.findNearestRef(nexp_phrase->next->lnode)->val;
+                            else
+                                rightrightElem = nexp_phrase->next->ltmp;
                             decreaseFrequency(rightElem, rightrightElem);
                             increaseFrequency(n, rightrightElem);
                         }
+                        nexp_phrase->rtmp = n;
                     }
                     // If range touches left edge, we can only decrease the left pair at the moment.
-                    else if (phrase_results[i].start == lref->pos &&  phrase_results[i].stop != rref->pos)
+                    else if (lRange == lref->pos && rRange != rref->pos)
                     {
                         if (nexp_phrase->prev != nullptr && nexp_phrase->prev->exp){
                             leftleftElem = nexp_phrase->prev->content.back();
@@ -908,7 +1568,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                             increaseFrequency(leftleftElem, n);
                         } 
                         else if (nexp_phrase->prev != nullptr && !nexp_phrase->prev->exp) {
-                            leftleftElem = rlist.findNearestRef(nexp_phrase->prev->rnode)->val;
+                            if (nexp_phrase->prev->rtmp == -1)
+                                leftleftElem = rlist.findNearestRef(nexp_phrase->prev->rnode)->val;
+                            else
+                                leftleftElem = nexp_phrase->prev->rtmp;
+                            nexp_phrase->ltmp = n;
                             decreaseFrequency(leftleftElem, leftElem);
                             increaseFrequency(leftleftElem, n);
                         }
@@ -918,7 +1582,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                         increaseFrequency(n, rightrightElem);
                     }
                     // If range touches right edge
-                    else if (phrase_results[i].start != lref->pos &&  phrase_results[i].stop == rref->pos)
+                    else if (lRange != lref->pos && rRange == rref->pos)
                     {
                         leftleftElem = rlist.findNearestRef(lref->prev)->val;
                         decreaseFrequency(leftleftElem, leftElem);
@@ -930,7 +1594,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                             increaseFrequency(n, rightrightElem);
                         } 
                         else if (nexp_phrase->next != nullptr && !nexp_phrase->next->exp) {
-                            rightrightElem = rlist.findNearestRef(nexp_phrase->next->lnode)->val;
+                            if (nexp_phrase->next->ltmp == -1)
+                                rightrightElem = rlist.findNearestRef(nexp_phrase->next->lnode)->val;
+                            else
+                                rightrightElem = nexp_phrase->next->ltmp;
+                            nexp_phrase->rtmp = n;
                             decreaseFrequency(rightElem, rightrightElem);
                             increaseFrequency(n, rightrightElem);
                         }
@@ -967,148 +1635,222 @@ void repair(std::ofstream& R, std::ofstream& C)
             nonexplicit_phrase_time += nexp_end - nexp_start;
         }
         
-        // Have to process the explicit phrases and little bit of the non explicit phrases
-        PhraseNode* curr_phrase = plist.getHead();
+        // Have to process the explicit phrases
         auto exp_start = std::chrono::high_resolution_clock::now();
-        while(curr_phrase != nullptr)
+        if (exp_pairs.find(max_pair) != exp_pairs.end())
         {
-            if (curr_phrase->exp)
+            spdlog::trace("Going through the explicit phrases");
+            std::unordered_set<ExpPair,ExpPairHash,ExpPairEqual> max_pairs = exp_pairs[max_pair];
+            for (auto it = max_pairs.begin(); it != max_pairs.end(); it++)
             {
-                auto curr_elem = curr_phrase->content.begin();
-                while (curr_elem != curr_phrase->content.end())
-                {
-                    auto next_elem = std::next(curr_elem);
-                    if (next_elem != curr_phrase->content.end() && (*curr_elem == left_elem && *next_elem == right_elem))
-                    {
-                        // Have to change the frequencies in max heap.
-                        // If the two elements are not at the beginning or end of the phrase then replace happens fully within the phrase
-                        if (curr_elem != curr_phrase->content.begin() && next_elem != std::prev(curr_phrase->content.end()))
-                        {
-                            // Decrease frequency of left pair effected by merge.
-                            decreaseFrequency(*(std::prev(curr_elem)), *(curr_elem));
-                            // Increase frequency of new pair.
-                            increaseFrequency(*(std::prev(curr_elem)), n);
-                            // Decrease frequency of right pair effected by merge.
-                            decreaseFrequency(*(next_elem), *(std::next(next_elem)));
-                            // Increase frequency of new pair.
-                            increaseFrequency(n, *(std::next(next_elem)));
-                        }
-                        // If both elments are at the beginning and end of the phrases, then have to look at the end of the prev and start of the next
-                        else if (curr_elem == curr_phrase->content.begin() && next_elem == std::prev(curr_phrase->content.end()))
-                        {
-                            // For the left pair effected have to look at previous phrase
-                            if (curr_phrase != plist.getHead())
-                            {
-                                PhraseNode* prev_phrase = curr_phrase->prev;
-                                if (prev_phrase->exp)
-                                {
-                                    // Decrease frequency of left pair effected by merge.
-                                    decreaseFrequency(prev_phrase->content.back(), *(curr_elem));
-                                    // Increase frequency of new pair.
-                                    increaseFrequency(prev_phrase->content.back(), n);
-                                }
-                                else
-                                {
-                                    int leftleftElem = rlist.findNearestRef(prev_phrase->rnode)->val;
-                                    // Decrease frequency of left pair effected by merge.
-                                    decreaseFrequency(leftleftElem, *(curr_elem));
-                                    // Increase frequency of new pair.
-                                    increaseFrequency(leftleftElem, n);
-                                }
-                            }
-                            // For the right pair effected have to look at next phrase
-                            if (curr_phrase != plist.getTail())
-                            {
-                                PhraseNode* next_phrase = curr_phrase->next;
-                                if (next_phrase->exp)
-                                {
-                                    // Decrease frequency of right pair effected by merge.
-                                    decreaseFrequency(*(next_elem), next_phrase->content.front());
-                                    // Increase frequency of new pair
-                                    increaseFrequency(n, next_phrase->content.front());
-                                }
-                                else{
-                                    int rightrightElem = rlist.findNearestRef(next_phrase->lnode)->val;
-                                    // Decrease frequency of right pair effected by merge.
-                                    decreaseFrequency(*(next_elem), rightrightElem);
-                                    // Increase frequency of new pair
-                                    increaseFrequency(n, rightrightElem);
-                                }
-                            }
-                        }
-                        // If the left elem is at the beginning of phrase and the right elem is in middle of phrase
-                        else if (curr_elem == curr_phrase->content.begin() && next_elem != std::prev(curr_phrase->content.end()))
-                        {
-                            // For the left pair effected have to look at previous phrase
-                            if (curr_phrase != plist.getHead())
-                            {
-                                PhraseNode* prev_phrase = curr_phrase->prev;
-                                if (prev_phrase->exp)
-                                {
-                                    // Decrease frequency of left pair effected by merge.
-                                    decreaseFrequency(prev_phrase->content.back(), *(curr_elem));
-                                    // Increase frequency of new pair.
-                                    increaseFrequency(prev_phrase->content.back(), n);
-                                }
-                                else
-                                {
-                                    int leftleftElem = rlist.findNearestRef(prev_phrase->rnode)->val;
-                                    // Decrease frequency of left pair effected by merge.
-                                    decreaseFrequency(leftleftElem, *(curr_elem));
-                                    // Increase frequency of new pair.
-                                    increaseFrequency(leftleftElem, n);
-                                }
-                            }
-                            // Decrease frequency of right pair effected by merge.
-                            decreaseFrequency(*(next_elem), *(std::next(next_elem)));
-                            // Increase frequency of new pair.
-                            increaseFrequency(n, *(std::next(next_elem)));
-                        }
-                        // If the left elem is in the middle of the phrase and the right elem is at the end of the phrase
-                        else if (curr_elem != curr_phrase->content.begin() && next_elem == std::prev(curr_phrase->content.end()))
-                        {
-                            // Decrease frequency of left pair effected by merge.
-                            decreaseFrequency(*(std::prev(curr_elem)), *(curr_elem));
-                            // Increase frequency of new pair.
-                            increaseFrequency(*(std::prev(curr_elem)), n);
+                PhraseNode* curr_phrase = it->exp_phrase;
+                auto leftIt = it->left;
+                auto rightIt = it->right;
+                std::list<int>::iterator leftleftIt;
+                std::list<int>::iterator rightrightIt;
 
-                        
-                            // For the right pair effected have to look at next phrase
-                            if (curr_phrase != plist.getTail())
-                            {
-                                PhraseNode* next_phrase = curr_phrase->next;
-                                if (next_phrase->exp)
-                                {
-                                    // Decrease frequency of right pair effected by merge.
-                                    decreaseFrequency(*(next_elem), next_phrase->content.front());
-                                    // Increase frequency of new pair
-                                    increaseFrequency(n, next_phrase->content.front());
-                                }
-                                else
-                                {
-                                    int rightrightElem = rlist.findNearestRef(next_phrase->lnode)->val;
-                                    // Decrease frequency of right pair effected by merge.
-                                    decreaseFrequency(*(next_elem), rightrightElem);
-                                    // Increase frequency of new pair
-                                    increaseFrequency(n, rightrightElem);
-                                }
-                            }
-                        } 
-                        // Delete twice for both elements in the bi-gram
-                        curr_elem = curr_phrase->content.erase(curr_elem);
-                        curr_elem = curr_phrase->content.erase(curr_elem);
-                        // Replace with n
-                        curr_phrase->content.insert(curr_elem, n);
+                // Some assertions
+                assert(leftIt <= rightIt);
+                assert(leftIt >= curr_phrase->content.begin() && rightIt < curr_phrase->content.end());
+                assert(leftIt >= curr_phrase->content.begin() && rightIt < curr_phrase->content.end());
+
+                bool rightAddConsecutive = false; // Adding from the right causes consecutive same chars 
+                bool leftAddConsecutive = false; // Adding from the left causes consecutive same chars
+                bool rightDeleteConsecutive = false;  // Deleting from the right causes shift of consecutive same chars 
+                bool leftDeleteConsecutive = false; // Deleting from the left causes shift of consecutive same chars
+
+                if (*leftIt == left_elem && *rightIt == right_elem)
+                {
+                    // Have to change the frequencies in max heap.
+                    // If the two elements are not at the beginning or end of the phrase then replace happens fully within the phrase
+                    if (leftIt != curr_phrase->content.begin() && rightIt != std::prev(curr_phrase->content.end()))
+                    {
+                        leftleftIt = std::prev(leftIt);
+                        rightrightIt = std::next(rightIt);
+                        // Decrease frequency of left pair effected by merge.
+                        decreaseFrequency(*leftleftIt, *leftIt);
+                        exp_pairs[{*leftleftIt, *leftIt}].erase(ExpPair(curr_phrase, leftleftIt, leftIt));
+                        // Increase frequency of new pair.
+                        increaseFrequency(*leftleftIt, n);
+                        exp_pairs[{*leftleftIt,n}].insert(ExpPair(curr_phrase, leftleftIt, leftIt));
+                        if (*leftleftIt == n){
+                            rightAddConsecutive = true;
+                        }
+                        else if (*leftleftIt == *leftIt)
+                        {
+                            rightDeleteConsecutive = true;
+                        }
+                        // Decrease frequency of right pair effected by merge.
+                        decreaseFrequency(*rightIt, *rightrightIt);
+                        exp_pairs[{*rightIt, *rightrightIt}].erase(ExpPair(curr_phrase, rightIt, rightrightIt));
+                        // Increase frequency of new pair.
+                        increaseFrequency(n, *rightrightIt);
+                        exp_pairs[{n, *rightrightIt}].insert(ExpPair(curr_phrase, leftIt, rightrightIt));
+                        if (*rightrightIt == n){
+                            leftAddConsecutive = true;
+                        }
+                        else if (*rightrightIt == *rightIt){
+                            leftDeleteConsecutive = true;
+                        }
                     }
-                    else{
-                        curr_elem = std::next(curr_elem);                        
+                    // If both elments are at the beginning and end of the phrases, then have to look at the end of the prev and start of the next
+                    else if (leftIt == curr_phrase->content.begin() && rightIt == std::prev(curr_phrase->content.end()))
+                    {
+                        // For the left pair effected have to look at previous phrase
+                        if (curr_phrase != plist.getHead())
+                        {
+                            PhraseNode* prev_phrase = curr_phrase->prev;
+                            if (prev_phrase->exp)
+                            {
+                                // Decrease frequency of left pair effected by merge.
+                                decreaseFrequency(prev_phrase->content.back(), *leftIt);
+                                // Increase frequency of new pair.
+                                increaseFrequency(prev_phrase->content.back(), n);
+                            }
+                            else
+                            {
+                                int leftleftElem = rlist.findNearestRef(prev_phrase->rnode)->val;
+                                // Decrease frequency of left pair effected by merge.
+                                decreaseFrequency(leftleftElem, *leftIt);
+                                // Increase frequency of new pair.
+                                increaseFrequency(leftleftElem, n);
+                            }
+                        }
+                        // For the right pair effected have to look at next phrase
+                        if (curr_phrase != plist.getTail())
+                        {
+                            PhraseNode* next_phrase = curr_phrase->next;
+                            if (next_phrase->exp)
+                            {
+                                // Decrease frequency of right pair effected by merge.
+                                decreaseFrequency(*rightIt, next_phrase->content.front());
+                                // Increase frequency of new pair
+                                increaseFrequency(n, next_phrase->content.front());
+                            }
+                            else{
+                                int rightrightElem = rlist.findNearestRef(next_phrase->lnode)->val;
+                                // Decrease frequency of right pair effected by merge.
+                                decreaseFrequency(*rightIt, rightrightElem);
+                                // Increase frequency of new pair
+                                increaseFrequency(n, rightrightElem);
+                            }
+                        }
+                    }
+                    // If the left elem is at the beginning of phrase and the right elem is in middle of phrase
+                    else if (leftIt == curr_phrase->content.begin() && rightIt != std::prev(curr_phrase->content.end()))
+                    {
+                        // For the left pair effected have to look at previous phrase
+                        if (curr_phrase != plist.getHead())
+                        {
+                            PhraseNode* prev_phrase = curr_phrase->prev;
+                            if (prev_phrase->exp)
+                            {
+                                // Decrease frequency of left pair effected by merge.
+                                decreaseFrequency(prev_phrase->content.back(), *leftIt);
+                                // Increase frequency of new pair.
+                                increaseFrequency(prev_phrase->content.back(), n);
+                            }
+                            else
+                            {
+                                int leftleftElem = rlist.findNearestRef(prev_phrase->rnode)->val;
+                                // Decrease frequency of left pair effected by merge.
+                                decreaseFrequency(leftleftElem, *(leftIt));
+                                // Increase frequency of new pair.
+                                increaseFrequency(leftleftElem, n);
+                            }
+                        }
+                        // Decrease frequency of right pair effected by merge.
+                        rightrightIt = std::next(rightIt);
+                        decreaseFrequency(*rightIt, *rightrightIt);
+                        exp_pairs[{*rightIt, *rightrightIt}].erase(ExpPair(curr_phrase, rightIt, rightrightIt));
+                        // Increase frequency of new pair.
+                        increaseFrequency(n, *rightrightIt);
+                        exp_pairs[{n, *rightrightIt}].insert(ExpPair(curr_phrase, leftIt, rightrightIt));
+                        if (*rightrightIt == n){
+                            leftAddConsecutive = true;
+                        }
+                        else if (*rightrightIt == *rightIt){
+                            leftDeleteConsecutive = true;
+                        }
+                    }
+                    // If the left elem is in the middle of the phrase and the right elem is at the end of the phrase
+                    else if (leftIt != curr_phrase->content.begin() && rightIt == std::prev(curr_phrase->content.end()))
+                    {
+                        // Decrease frequency of left pair effected by merge.
+                        leftleftIt = std::prev(leftIt);
+                        decreaseFrequency(*leftleftIt, *leftIt);
+                        exp_pairs[{*leftleftIt, *leftIt}].erase(ExpPair(curr_phrase, leftleftIt, leftIt));
+                        // Increase frequency of new pair.
+                        increaseFrequency(*leftleftIt, n);
+                        exp_pairs[{*leftleftIt, n}].insert(ExpPair(curr_phrase, leftleftIt, leftIt));
+                        if (*leftleftIt == n){
+                            rightAddConsecutive = true;
+                        }
+                        else if (*leftleftIt == *leftIt){
+                            rightDeleteConsecutive = true;
+                        }
+
+                        // For the right pair effected have to look at next phrase
+                        if (curr_phrase != plist.getTail())
+                        {
+                            PhraseNode* next_phrase = curr_phrase->next;
+                            if (next_phrase->exp)
+                            {
+                                // Decrease frequency of right pair effected by merge.
+                                decreaseFrequency(*rightIt, next_phrase->content.front());
+                                // Increase frequency of new pair
+                                increaseFrequency(n, next_phrase->content.front());
+                            }
+                            else
+                            {
+                                int rightrightElem = rlist.findNearestRef(next_phrase->lnode)->val;
+                                // Decrease frequency of right pair effected by merge.
+                                decreaseFrequency(*rightIt, rightrightElem);
+                                // Increase frequency of new pair
+                                increaseFrequency(n, rightrightElem);
+                            }
+                        }
                     } 
+                    // Replace current elem val with n and remove next elem 
+                    *leftIt = n;
+                    curr_phrase->content.erase(rightIt);
+
+                    // Potentially fix consecutive same char pairs in exp_pairs
+                    if (leftAddConsecutive){
+                        updateExpPairs(curr_phrase, leftIt, true);
+                    }
+                    if (leftDeleteConsecutive){
+                        updateExpPairs(curr_phrase, std::next(leftIt), true);
+                    }
+                    if (rightAddConsecutive){
+                        updateExpPairs(curr_phrase, leftIt, false);
+                    }
+                    if (rightDeleteConsecutive){
+                        updateExpPairs(curr_phrase, std::prev(leftIt), false);
+                    }
                 }
             }
-            curr_phrase = curr_phrase->next;
+            exp_pairs.erase(max_pair);
         }
         auto exp_end = std::chrono::high_resolution_clock::now();
         explicit_phrase_time += exp_end - exp_start;
+
+        // Check the number of chars replaced is correct
+        if (verbosity == 2)
+        {
+            spdlog::trace("----------------------------");
+            spdlog::trace("Max Pair: ({},{})", printSymbol(maxLeft), printSymbol(maxRight));
+            int phrase_length = checkPhraseSizes();
+            int num_pairs_replaced = start_size - phrase_length;
+            max_freq = max_freq - invalidFreq;
+            spdlog::trace("Number of occurences: {}", max_freq);
+            spdlog::trace("Number replaced: {}", num_pairs_replaced);
+            if (num_pairs_replaced != max_freq){
+                spdlog::error("Something is wrong");
+            } 
+            start_size = phrase_length;
+            spdlog::trace("----------------------------");
+        }
 
         // Remove old record
         removeRecord(&Rec,oid);
@@ -1128,7 +1870,10 @@ void repair(std::ofstream& R, std::ofstream& C)
             spdlog::trace("*** Information after bi-gram replacement ***");
             printRef();
             printPhraseList();
-            printAllRecords();
+            //printAllRecords();
+            checkExpPairs();
+            checkHeap();
+            //phrase_tree.printTree();
             spdlog::trace("*********************************************");
         }
     }
@@ -1276,6 +2021,7 @@ int main(int argc, char *argv[])
     spdlog::debug("Total Phrase Boundary Time (s): {:.6f}", std::chrono::duration<double>(phrase_boundary_time).count());
     spdlog::debug("Total Source Boundary Time (s): {:.6f}", std::chrono::duration<double>(source_boundary_time).count());
     spdlog::debug("Total Build Interval Tree Time (s): {:.6f}", std::chrono::duration<double>(build_interval_time).count());
+    spdlog::debug("Total Update Interval Tree Time (s): {:.6f}", std::chrono::duration<double>(update_interval_time).count());
     spdlog::debug("Total Non-explicit Phrase Time (s): {:.6f}", std::chrono::duration<double>(nonexplicit_phrase_time).count());
     spdlog::debug("Total Explicit Phrase Time (s): {:.6f}", std::chrono::duration<double>(explicit_phrase_time).count());
     spdlog::debug("Total Hash Range Update Time (s): {:.6f}", std::chrono::duration<double>(hash_range_time).count());
