@@ -1773,18 +1773,13 @@ void repair(std::ofstream& R, std::ofstream& C)
         
         auto pbound_start = std::chrono::high_resolution_clock::now();
         phraseBoundaries(left_elem, right_elem);
-        checkPhraseBoundaries();
-        checkSourceBoundaries();
         auto pbound_end = std::chrono::high_resolution_clock::now();
         phrase_boundary_time += pbound_end - pbound_start;
 
         auto sbound_start = std::chrono::high_resolution_clock::now();
         sourceBoundaries(left_elem, right_elem);
-        checkPhraseBoundaries();
-        checkSourceBoundaries();
         auto sbound_end = std::chrono::high_resolution_clock::now();
         source_boundary_time += sbound_end - sbound_start;
-        break;
         
         // Calculate number of invalid consecutive pairs of chars
         int maxLeft = orec->pair.left;
@@ -1839,7 +1834,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                     int lRange = rlist.findNearestRef(phrase_results[i]->lnode)->pos;
                     int rRange = rlist.findNearestRef(phrase_results[i]->rnode)->pos;
 
-                    // If range fully contained within range then we can do the decrease and increase frequencies
+                    // If range fully contained within the edges
                     if (lRange != lref->pos && rRange != rref->pos)
                     {
                         leftleftElem = rlist.findNearestRef(lref->prev)->val;
@@ -1853,10 +1848,17 @@ void repair(std::ofstream& R, std::ofstream& C)
                     // If range touches the edges
                     else if (lRange == lref->pos && rRange == rref->pos)
                     {
+                        // First update the hash table
+                        start_hash[nexp_phrase->lnode->val].erase(nexp_phrase);
+                        start_hash[n].insert(nexp_phrase);
+                        // Then update the heap
                         if (nexp_phrase->prev != nullptr && nexp_phrase->prev->exp){
                             leftleftElem = nexp_phrase->prev->content.back();
                             decreaseFrequency(leftleftElem, leftElem);
                             increaseFrequency(leftleftElem, n);
+                            // Update the phrase boundary hash tables
+                            pbound_pairs[{leftleftElem, leftElem}].erase(nexp_phrase->prev);
+                            pbound_pairs[{leftleftElem, n}].insert(nexp_phrase->prev);
                         } 
                         else if (nexp_phrase->prev != nullptr && !nexp_phrase->prev->exp) {
                             if (nexp_phrase->prev->rtmp == -1)
@@ -1865,12 +1867,22 @@ void repair(std::ofstream& R, std::ofstream& C)
                                 leftleftElem = nexp_phrase->prev->rtmp;
                             decreaseFrequency(leftleftElem, leftElem);
                             increaseFrequency(leftleftElem, n);
+                            // Update the phrase boundary hash tables
+                            pbound_pairs[{leftleftElem, leftElem}].erase(nexp_phrase->prev);
+                            pbound_pairs[{leftleftElem, n}].insert(nexp_phrase->prev);
                         }
                         nexp_phrase->ltmp = n;
+                        // First update the hash table
+                        end_hash[nexp_phrase->rnode->val].erase(nexp_phrase);
+                        end_hash[n].insert(nexp_phrase);
+                        // Then update the heap
                         if (nexp_phrase->next != nullptr && nexp_phrase->next->exp){
                             rightrightElem = nexp_phrase->next->content.front();
                             decreaseFrequency(rightElem, rightrightElem);
                             increaseFrequency(n, rightrightElem);
+                            // Update the phrase boundary hash tables
+                            pbound_pairs[{rightElem, rightrightElem}].erase(nexp_phrase);
+                            pbound_pairs[{n, rightrightElem}].insert(nexp_phrase);
                         } 
                         else if (nexp_phrase->next != nullptr && !nexp_phrase->next->exp) {
                             if (nexp_phrase->next->ltmp == -1)
@@ -1879,16 +1891,26 @@ void repair(std::ofstream& R, std::ofstream& C)
                                 rightrightElem = nexp_phrase->next->ltmp;
                             decreaseFrequency(rightElem, rightrightElem);
                             increaseFrequency(n, rightrightElem);
+                            // Update the phrase boundary hash tables
+                            pbound_pairs[{rightElem, rightrightElem}].erase(nexp_phrase);
+                            pbound_pairs[{n, rightrightElem}].insert(nexp_phrase);
                         }
                         nexp_phrase->rtmp = n;
                     }
-                    // If range touches left edge, we can only decrease the left pair at the moment.
+                    // If range touches left edge
                     else if (lRange == lref->pos && rRange != rref->pos)
                     {
+                        // First update the hash table
+                        start_hash[nexp_phrase->lnode->val].erase(nexp_phrase);
+                        start_hash[n].insert(nexp_phrase);
+                        // Then update the heap
                         if (nexp_phrase->prev != nullptr && nexp_phrase->prev->exp){
                             leftleftElem = nexp_phrase->prev->content.back();
                             decreaseFrequency(leftleftElem, leftElem);
                             increaseFrequency(leftleftElem, n);
+                            // Update the phrase boundary hash tables
+                            pbound_pairs[{leftleftElem, leftElem}].erase(nexp_phrase->prev);
+                            pbound_pairs[{leftleftElem, n}].insert(nexp_phrase->prev);
                         } 
                         else if (nexp_phrase->prev != nullptr && !nexp_phrase->prev->exp) {
                             if (nexp_phrase->prev->rtmp == -1)
@@ -1898,6 +1920,9 @@ void repair(std::ofstream& R, std::ofstream& C)
                             nexp_phrase->ltmp = n;
                             decreaseFrequency(leftleftElem, leftElem);
                             increaseFrequency(leftleftElem, n);
+                            // Update the phrase boundary hash tables
+                            pbound_pairs[{leftleftElem, leftElem}].erase(nexp_phrase->prev);
+                            pbound_pairs[{leftleftElem, n}].insert(nexp_phrase->prev);
                         }
 
                         rightrightElem = rlist.findForwardRef(rref)->val;
@@ -1911,10 +1936,17 @@ void repair(std::ofstream& R, std::ofstream& C)
                         decreaseFrequency(leftleftElem, leftElem);
                         increaseFrequency(leftleftElem, n);
 
+                        // First update the hash table
+                        end_hash[nexp_phrase->rnode->val].erase(nexp_phrase);
+                        end_hash[n].insert(nexp_phrase);
+                        // Then update the heap
                         if (nexp_phrase->next != nullptr && nexp_phrase->next->exp){
                             rightrightElem = nexp_phrase->next->content.front();
                             decreaseFrequency(rightElem, rightrightElem);
                             increaseFrequency(n, rightrightElem);
+                            // Update the phrase boundary hash tables
+                            pbound_pairs[{rightElem, rightrightElem}].erase(nexp_phrase);
+                            pbound_pairs[{n, rightrightElem}].insert(nexp_phrase);
                         } 
                         else if (nexp_phrase->next != nullptr && !nexp_phrase->next->exp) {
                             if (nexp_phrase->next->ltmp == -1)
@@ -1924,6 +1956,9 @@ void repair(std::ofstream& R, std::ofstream& C)
                             nexp_phrase->rtmp = n;
                             decreaseFrequency(rightElem, rightrightElem);
                             increaseFrequency(n, rightrightElem);
+                            // Update the phrase boundary hash tables
+                            pbound_pairs[{rightElem, rightrightElem}].erase(nexp_phrase);
+                            pbound_pairs[{n, rightrightElem}].insert(nexp_phrase);
                         }
                     }
                     else{
@@ -2025,6 +2060,9 @@ void repair(std::ofstream& R, std::ofstream& C)
                             PhraseNode* prev_phrase = curr_phrase->prev;
                             if (prev_phrase->exp)
                             {
+                                // Update the phrase boundary hash tables
+                                pbound_pairs[{prev_phrase->content.back(), *leftIt}].erase(prev_phrase);
+                                pbound_pairs[{prev_phrase->content.back(), n}].insert(prev_phrase);
                                 // Decrease frequency of left pair effected by merge.
                                 decreaseFrequency(prev_phrase->content.back(), *leftIt);
                                 // Increase frequency of new pair.
@@ -2033,6 +2071,9 @@ void repair(std::ofstream& R, std::ofstream& C)
                             else
                             {
                                 int leftleftElem = rlist.findNearestRef(prev_phrase->rnode)->val;
+                                // Update the phrase boundary hash tables
+                                pbound_pairs[{leftleftElem, *leftIt}].erase(prev_phrase);
+                                pbound_pairs[{leftleftElem, n}].insert(prev_phrase);
                                 // Decrease frequency of left pair effected by merge.
                                 decreaseFrequency(leftleftElem, *leftIt);
                                 // Increase frequency of new pair.
@@ -2045,6 +2086,9 @@ void repair(std::ofstream& R, std::ofstream& C)
                             PhraseNode* next_phrase = curr_phrase->next;
                             if (next_phrase->exp)
                             {
+                                // Update the phrase boundary hash tables
+                                pbound_pairs[{*rightIt, next_phrase->content.front()}].erase(curr_phrase);
+                                pbound_pairs[{n, next_phrase->content.front()}].insert(curr_phrase);
                                 // Decrease frequency of right pair effected by merge.
                                 decreaseFrequency(*rightIt, next_phrase->content.front());
                                 // Increase frequency of new pair
@@ -2052,6 +2096,9 @@ void repair(std::ofstream& R, std::ofstream& C)
                             }
                             else{
                                 int rightrightElem = rlist.findNearestRef(next_phrase->lnode)->val;
+                                // Update the phrase boundary hash tables
+                                pbound_pairs[{*rightIt, rightrightElem}].erase(curr_phrase);
+                                pbound_pairs[{n, rightrightElem}].insert(curr_phrase);
                                 // Decrease frequency of right pair effected by merge.
                                 decreaseFrequency(*rightIt, rightrightElem);
                                 // Increase frequency of new pair
@@ -2068,6 +2115,9 @@ void repair(std::ofstream& R, std::ofstream& C)
                             PhraseNode* prev_phrase = curr_phrase->prev;
                             if (prev_phrase->exp)
                             {
+                                // Update the phrase boundary hash tables
+                                pbound_pairs[{prev_phrase->content.back(), *leftIt}].erase(prev_phrase);
+                                pbound_pairs[{prev_phrase->content.back(), n}].insert(prev_phrase);
                                 // Decrease frequency of left pair effected by merge.
                                 decreaseFrequency(prev_phrase->content.back(), *leftIt);
                                 // Increase frequency of new pair.
@@ -2076,6 +2126,9 @@ void repair(std::ofstream& R, std::ofstream& C)
                             else
                             {
                                 int leftleftElem = rlist.findNearestRef(prev_phrase->rnode)->val;
+                                // Update the phrase boundary hash tables
+                                pbound_pairs[{leftleftElem, *leftIt}].erase(prev_phrase);
+                                pbound_pairs[{leftleftElem, n}].insert(prev_phrase);
                                 // Decrease frequency of left pair effected by merge.
                                 decreaseFrequency(leftleftElem, *(leftIt));
                                 // Increase frequency of new pair.
@@ -2119,6 +2172,9 @@ void repair(std::ofstream& R, std::ofstream& C)
                             PhraseNode* next_phrase = curr_phrase->next;
                             if (next_phrase->exp)
                             {
+                                // Update the phrase boundary hash tables
+                                pbound_pairs[{*rightIt, next_phrase->content.front()}].erase(curr_phrase);
+                                pbound_pairs[{n, next_phrase->content.front()}].insert(curr_phrase);
                                 // Decrease frequency of right pair effected by merge.
                                 decreaseFrequency(*rightIt, next_phrase->content.front());
                                 // Increase frequency of new pair
@@ -2127,6 +2183,9 @@ void repair(std::ofstream& R, std::ofstream& C)
                             else
                             {
                                 int rightrightElem = rlist.findNearestRef(next_phrase->lnode)->val;
+                                // Update the phrase boundary hash tables
+                                pbound_pairs[{*rightIt, rightrightElem}].erase(curr_phrase);
+                                pbound_pairs[{n, rightrightElem}].insert(curr_phrase);
                                 // Decrease frequency of right pair effected by merge.
                                 decreaseFrequency(*rightIt, rightrightElem);
                                 // Increase frequency of new pair
@@ -2193,6 +2252,8 @@ void repair(std::ofstream& R, std::ofstream& C)
             spdlog::trace("*** Information after bi-gram replacement ***");
             printRef();
             printPhraseList();
+            checkPhraseBoundaries();
+            checkSourceBoundaries();
             //printAllRecords();
             checkExpPairs();
             checkHeap();
