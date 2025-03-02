@@ -1674,6 +1674,18 @@ void mergeConsecutiveExpPhrases()
     {
         PhraseNode* next_phrase = curr_phrase->next;
         if (next_phrase != nullptr && curr_phrase->exp && next_phrase->exp){
+            // Update the boundary hash tables
+            PhraseNode* next_next_phrase = next_phrase->next;
+            if (next_next_phrase != nullptr){
+                if (!next_next_phrase->exp){
+                    pbound_pairs[{next_phrase->content.back(), rlist.findNearestRef(next_next_phrase->lnode)->val}].erase(next_phrase);
+                    pbound_pairs[{next_phrase->content.back(), rlist.findNearestRef(next_next_phrase->lnode)->val}].insert(curr_phrase);
+                }
+                else{
+                    pbound_pairs[{next_phrase->content.back(), next_next_phrase->content.front()}].erase(next_phrase);
+                    pbound_pairs[{next_phrase->content.back(), next_next_phrase->content.front()}].insert(curr_phrase);
+                }
+            }
             pbound_pairs[{curr_phrase->content.back(), next_phrase->content.front()}].erase(curr_phrase);
             auto l = std::prev(curr_phrase->content.end());
             auto r = next_phrase->content.begin();
@@ -1688,6 +1700,10 @@ void mergeConsecutiveExpPhrases()
             continue; // If it gets to here then the next iteration will have the same curr phrase.
         }
         curr_phrase = curr_phrase->next;
+    }
+    if (verbosity == 2){
+        spdlog::trace("Phrase list after merging explicit phrases condition.");
+        printPhraseList();
     }
 }
 
@@ -1812,6 +1828,8 @@ void repair(std::ofstream& R, std::ofstream& C)
         source_boundary_time += sbound_end - sbound_start;
 
         mergeConsecutiveExpPhrases();
+        checkPhraseBoundaries();
+        checkSourceBoundaries();
         
         // Calculate number of invalid consecutive pairs of chars
         int maxLeft = orec->pair.left;
