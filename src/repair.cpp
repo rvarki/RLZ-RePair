@@ -1901,7 +1901,7 @@ void sourceBoundaries(int left_elem, int right_elem)
 }
 
 /**
- * @brief Merge consecutive explicit phrases
+ * @brief Merge consecutive explicit phrases after phrase and source boundaries
  */
 
 void mergeConsecutiveExpPhrases()
@@ -1912,25 +1912,30 @@ void mergeConsecutiveExpPhrases()
     curr_phrase->rtmp = -1;
     while (curr_phrase != nullptr)
     {
+        // Useful variable
+        std::pair<int,int> pboundPair;
+
         PhraseNode* next_phrase = curr_phrase->next;
         if (next_phrase != nullptr && curr_phrase->exp && next_phrase->exp){
             // Update the boundary hash tables
             auto pbound_it = pbound_it_map[curr_phrase];
-            pbound_pairs[{curr_phrase->content.back(), next_phrase->content.front()}].erase(pbound_it);
+            pbound_pairs[{curr_phrase->content.back(), next_phrase->content.front()}].erase(pbound_it); // Delete the pbound entry between the curr and next phrase
 
             PhraseNode* next_next_phrase = next_phrase->next;
             if (next_next_phrase != nullptr){
                 if (!next_next_phrase->exp){
                     pbound_it = pbound_it_map[next_phrase];
-                    pbound_pairs[{next_phrase->content.back(), rlist.findNearestRef(next_next_phrase->lnode)->val}].erase(pbound_it);
-                    pbound_pairs[{next_phrase->content.back(), rlist.findNearestRef(next_next_phrase->lnode)->val}].push_back(curr_phrase);
-                    pbound_it_map[curr_phrase] = std::prev(pbound_pairs[{next_phrase->content.back(), rlist.findNearestRef(next_next_phrase->lnode)->val}].end());
+                    pboundPair = std::make_pair(next_phrase->content.back(), rlist.findNearestRef(next_next_phrase->lnode)->val); // Delete the pbound entry between the next phrase and next next phrase
+                    pbound_pairs[pboundPair].erase(pbound_it);
+                    pbound_pairs[pboundPair].push_back(curr_phrase); // Add the pbound entry between curr phrase and next next phrase
+                    pbound_it_map[curr_phrase] = std::prev(pbound_pairs[pboundPair].end());
                 }
                 else{
                     pbound_it = pbound_it_map[next_phrase];
-                    pbound_pairs[{next_phrase->content.back(), next_next_phrase->content.front()}].erase(pbound_it);
-                    pbound_pairs[{next_phrase->content.back(), next_next_phrase->content.front()}].push_back(curr_phrase);
-                    pbound_it_map[curr_phrase] = std::prev(pbound_pairs[{next_phrase->content.back(), next_next_phrase->content.front()}].end());
+                    pboundPair = std::make_pair(next_phrase->content.back(), next_next_phrase->content.front()); // Delete the pbound entry between the next phrase and next next phrase
+                    pbound_pairs[pboundPair].erase(pbound_it);
+                    pbound_pairs[pboundPair].push_back(curr_phrase); // Add the pbound entry between curr phrase and next next phrase
+                    pbound_it_map[curr_phrase] = std::prev(pbound_pairs[pboundPair].end());
                 }
             }
             
@@ -2061,27 +2066,18 @@ void repair(std::ofstream& R, std::ofstream& C)
         int right_elem = orec->pair.right;
         
         auto pbound_start = std::chrono::high_resolution_clock::now();
-        spdlog::debug("Phrase Boundaries");
         phraseBoundaries(left_elem, right_elem);
         auto pbound_end = std::chrono::high_resolution_clock::now();
         phrase_boundary_time += pbound_end - pbound_start;
 
-        spdlog::debug("Merge Consecutive Exp Boundaries");
         mergeConsecutiveExpPhrases();
-        checkPhraseBoundaries();
-        checkSourceBoundaries();
 
         auto sbound_start = std::chrono::high_resolution_clock::now();
-        spdlog::debug("Source Boundaries");
         sourceBoundaries(left_elem, right_elem);
         auto sbound_end = std::chrono::high_resolution_clock::now();
         source_boundary_time += sbound_end - sbound_start;
-        checkSourceBoundaries();
 
-        spdlog::debug("Merge Consecutive Exp Boundaries");
         mergeConsecutiveExpPhrases();
-        checkPhraseBoundaries();
-        checkSourceBoundaries();
         
         // Calculate number of invalid consecutive pairs of chars
         int maxLeft = orec->pair.left;
@@ -2600,8 +2596,8 @@ void repair(std::ofstream& R, std::ofstream& C)
             printRef();
             printPhraseList();
             //printAllRecords();
-            checkPhraseBoundaries();
-            checkSourceBoundaries();
+            //checkPhraseBoundaries();
+            //checkSourceBoundaries();
             checkExpPairs();
             checkHeap();
             //phrase_tree.printTree();
