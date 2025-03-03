@@ -25,9 +25,11 @@ class PhraseNode
         int rtmp; // Needed for case where consecutive non exp phrase are replacing their edges in the same step
         PhraseNode* prev;
         PhraseNode* next;
+        PhraseNode* exp_prev;
+        PhraseNode* exp_next;
 
-        PhraseNode(RefNode* lnode, RefNode* rnode) : content({}), exp(false), lnode(lnode), rnode(rnode), ltmp(-1), rtmp(-1), prev(nullptr), next(nullptr) {}
-        PhraseNode(std::list<int> ilist) : content(ilist), exp(true), lnode(nullptr), rnode(nullptr), ltmp(-1), rtmp(-1), prev(nullptr), next(nullptr) {}
+        PhraseNode(RefNode* lnode, RefNode* rnode) : content({}), exp(false), lnode(lnode), rnode(rnode), ltmp(-1), rtmp(-1), prev(nullptr), next(nullptr), exp_prev(nullptr), exp_next(nullptr) {}
+        PhraseNode(std::list<int> ilist) : content(ilist), exp(true), lnode(nullptr), rnode(nullptr), ltmp(-1), rtmp(-1), prev(nullptr), next(nullptr), exp_prev(nullptr), exp_next(nullptr) {}
 };
 
 
