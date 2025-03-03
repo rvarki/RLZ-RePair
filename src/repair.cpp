@@ -1913,17 +1913,14 @@ void sourceBoundaries(int left_elem, int right_elem)
 
 void mergeConsecutiveExpPhrases()
 {
-    PhraseNode* curr_phrase = plist.getHead();
-    // Reset the tmp pointers
-    curr_phrase->ltmp = -1;
-    curr_phrase->rtmp = -1;
+    PhraseNode* curr_phrase = plist.getExpHead();
     while (curr_phrase != nullptr)
     {
         // Useful variable
         std::pair<int,int> pboundPair;
 
-        PhraseNode* next_phrase = curr_phrase->next;
-        if (next_phrase != nullptr && curr_phrase->exp && next_phrase->exp){
+        PhraseNode* next_phrase = curr_phrase->exp_next;
+        if (next_phrase != nullptr && curr_phrase->next == next_phrase){
             // Update the boundary hash tables
             auto update_bound_hash_start = std::chrono::high_resolution_clock::now();
             auto pbound_it = pbound_it_map[curr_phrase];
@@ -1961,7 +1958,7 @@ void mergeConsecutiveExpPhrases()
             }
             continue; // If it gets to here then the next iteration will have the same curr phrase.
         }
-        curr_phrase = curr_phrase->next;
+        curr_phrase = curr_phrase->exp_next;
     }
     if (verbosity == 2){
         spdlog::trace("Phrase list after merging explicit phrases condition.");
@@ -2312,6 +2309,8 @@ void repair(std::ofstream& R, std::ofstream& C)
                 // Update the tree (Phrase can never be deleted at this step)
                 for (int i = 0; i < phrase_results.size(); i++){
                     PhraseNode* nexp_phrase = phrase_results[i];
+                    nexp_phrase->ltmp = -1;
+                    nexp_phrase->rtmp = -1;
                     if (nexp_phrase->lnode->deleted || nexp_phrase->rnode->deleted){
                         auto update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.remove({nexp_phrase->lnode->pos, nexp_phrase->rnode->pos}, nexp_phrase);
