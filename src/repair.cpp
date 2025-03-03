@@ -212,6 +212,7 @@ void printRecord(const std::string message, const Trecord* orec)
  * 
  * @param[in] new_symbol [int] the new non-terminal symbol to be added.
  * @param[in] orec [Trecord*] the record content to be printed.
+ * @return void
  */
 
 void printMaxPair(int new_symbol, const Trecord* orec)
@@ -244,7 +245,7 @@ void printRef()
 }
 
 /**
- * @brief Prints the hash table of bi-grams in the reference.
+ * @brief Prints the hash table of bi-grams in the reference. Debug purposes only.
  * @return void
  */
 void printHashRanges()
@@ -262,7 +263,9 @@ void printHashRanges()
 }
 
 /**
- * @brief Prints specific phrase
+ * @brief Prints specific phrase. Debug purposes only.
+ * @param[in] curr_phrase [PhraseNode*] The pointer of the phrase to be printed
+ * @return void
  */
 
 void printPhrase(PhraseNode* curr_phrase)
@@ -289,7 +292,11 @@ void printPhrase(PhraseNode* curr_phrase)
 }
 
 /**
- * @brief Print supposed phrase
+ * @brief Prints explicit phrase given an iterator to the list. Debug only.
+ * Usecase was in debugging updateMergeExpPairs. Most cases use printPhrase instead.
+ * @param[in] curr_phrase [PhraseNode*] the pointer of the explicit phrase to be printed.
+ * @param[in] leftIt [std::list<int>::iterator] an iterator to the list of the explicit phrase
+ * @return void
  */
 
 void printSupposedPhrase(PhraseNode* curr_phrase, std::list<int>::iterator leftIt)
@@ -308,11 +315,13 @@ void printSupposedPhrase(PhraseNode* curr_phrase, std::list<int>::iterator leftI
 }
 
 /**
- * @brief Calculate number of invalid consecutive same chars in the phrases
+ * @brief Calculate number of invalid consecutive same chars in the phrases. Debug only.
  * For example, eeee -> 1 (the 2nd ee)
  * For example, aaa -> 1 (the 2nd aa)
  * For example, iiiii -> 2 (2nd and 4th ii)
- * Assumes run after phrase and source boundary so no crossing boundary
+ * @warning Run only after phrase,source, and merge explicit phrase boundary because it does not account for pairs crossing phrases.
+ * @param[in] letter [int] the letter of the same pair to check.
+ * @return the number of invalid occurences across both the explicit and non-explicit phrases. 
  */
 
 int invalidSameCharPair(int letter)
@@ -389,7 +398,8 @@ int invalidSameCharPair(int letter)
 }
 
 /**
- * @brief Checks whether the frequencies in the heap is correct 
+ * @brief Checks whether the frequencies in the max heap are correct at any moment. Debug only.
+ * @return true if correct else false
  */
 
 bool checkHeap()
@@ -463,7 +473,9 @@ bool checkHeap()
 }
 
 /**
- * @brief Calculates the size of the phrases currently
+ * @brief Calculates the size of the phrases currently. Debug only.
+ * Used to make sure the size of the phrases was decreasing properly.
+ * @return the total size of all the phrases.
  */
 
 int checkPhraseSizes()
@@ -538,10 +550,9 @@ void printPhraseList()
 }
 
 /**
- * @brief Check the exp_pairs stored.
- * 
- * At any point in time the exp_pairs should be up to date
- * 
+ * @brief Check that the exp_pairs hash table stores only the correct information. Debug only.
+ * At any point in time the exp_pairs should be up to date.
+ * @return true if correct else false
  */
 bool checkExpPairs()
 {
@@ -603,9 +614,9 @@ bool checkExpPairs()
 }
 
 /**
- * @brief Check the phrase boundary hash table for correctness
- * @warning This is now dangerous since it modifies the original list. 
- * Only call it at specific iterations during debug
+ * @brief Check the phrase boundary hash table for correctness. Debug only.
+ * Creates deep copy of pbound_pairs and pbound_it_map so should be safe to call now.
+ * @return true if phrase boundaries are correct else false.
  */
 bool checkPhraseBoundaries()
 {
@@ -670,7 +681,8 @@ bool checkPhraseBoundaries()
 }
 
 /**
- * @brief Check the source boundary hash tables for correctness
+ * @brief Check the source boundary hash tables for correctness. Debug only.
+ * @return true if correct else false
  */
  bool checkSourceBoundaries()
  {
@@ -855,7 +867,10 @@ void createMaxHeap(std::ifstream& pfile)
  * 
  * Each phrase created will be a non-explicit phrase. 
  * A non-explicit phrase stores left and right endpoints that references the reference.
- * Range for each phrase is [left,right] 
+ * Range for each phrase is [left,right]
+ * 
+ * Also populate hash tables for phrase boundary between phrases
+ * and hash tables storing the start and end char of each non-explicit phrase 
  * 
  * @param[in] pfile [std::ifstream&] the RLZ parse filestream
  * @return void 
@@ -912,7 +927,8 @@ void populatePhrases(std::ifstream& pfile)
 }
 
 /**
- * @brief Builds interval tree from the non-explicit phrases.
+ * @brief Builds interval tree from the non-explicit phrases at the start.
+ * @return void
  */
 
 void buildIntervalTree()
@@ -932,7 +948,11 @@ void buildIntervalTree()
 /**
  * @brief Ensures that consecutive same characters >2 do not have overlapping entries in exp_pairs.
  * When adding from left, we might have to update exp_pairs all pairs of exp_pairs. (ie. e + ee -> ee + e)
- * When adding from right, we check if the consecutive same characters are odd or even
+ * When adding from right, we wind the iterator back to the start of the same char run and then do what we do for left insert.
+ * @param[in] p [PhraseNode*] the explicit phrase of interest.
+ * @param[in] it [std::list<int>::iterator] either the left or right iterator to run of same chars
+ * @param[in] leftInsert [bool] whether the iterator is from the left or right of the run of same chars
+ * @return void
  */
 
 void updateExpPairs(PhraseNode* p, std::list<int>::iterator it, bool leftInsert)
@@ -996,7 +1016,16 @@ void updateExpPairs(PhraseNode* p, std::list<int>::iterator it, bool leftInsert)
 
 /** 
  * @brief Ensures that consecutive same characters >2 do not have overlapping entries in exp_pairs.
- * Used when merging explicit phrases together
+ * Used when merging explicit phrases together.
+ * @note When merging two explicit phrases together that both start and end with the same char,
+ * we only have access to iterators in the middle of the run (the left phrase end iterator or right phrase start iterator).
+ * Each iterator requires us to rewind to the start of the same run and then do the update to the same char pairs as necessary.
+ * This is essentially rightInsert of updateExpPairs (at least I think). This was not possible in the old version of 
+ * updateExpPairs since rightInsert did something else. Should think about replacing now.
+ * @todo Think about replacing this function with updateExpPairs rightInsert functionality now.
+ * @param[in] p [PhraseNode*] The left explicit phrase which is getting merged into.
+ * @param[in] it [std::list<int>::iterator] iterator within the run of the same chars.
+ * @return void
  */
 
 void updateMergeExpPairs(PhraseNode* p, std::list<int>::iterator it)
@@ -1036,7 +1065,12 @@ void updateMergeExpPairs(PhraseNode* p, std::list<int>::iterator it)
 }
 
 /**
- * @brief Deletes the exp pairs assigned to one exp phrase and assigns to another exp phrase 
+ * @brief Deletes the exp pairs assigned to one exp phrase and assigns to another exp phrase.
+ * Used when merging two explicit phrases together since pair ownership of the phrase to be merged
+ * has to be transferred to the phrase which is getting merged into. 
+ * @param[in] origPhrase [PhraseNode*] the phrase to be merged
+ * @param[in] newPhrase [PhraseNode*] the phrase to be merged into.
+ * @return void
  */
 
 void reassignExpPairs(PhraseNode* origPhrase, PhraseNode* newPhrase)
@@ -1070,6 +1104,9 @@ void reassignExpPairs(PhraseNode* origPhrase, PhraseNode* newPhrase)
  * form the provided bi-gram, both elements are removed from their respective phrases and added together to create 
  * an explicit phrase. If one of the phrases are explicit already, only from the non-explict phrase is the 
  * elem removed (since the other phrase is already explicit).
+ * 
+ * If after merging the curr phrase can still form the max pair with the next phrase, we do not explore
+ * that at the moment. Instead we will add the current phrase back to the list and process later.
  * 
  * @param [in] left_elem [int] the left elem of the max occuring bi-gram
  * @param [in] right_elem [int] the right elem of the max occuring bi-gram
@@ -1565,10 +1602,8 @@ void phraseBoundaries(int left_elem, int right_elem)
  * or the leftmost elem of a non-explicit phrase and the previous elem in the reference form the provided bi-gram
  * then remove the offending elem from the non-explicit phrase and create an explicit phrase.
  * 
- * This function should uphold the commitment that when we create or add to an explicit phrase to the left of the
- * current phrase that we switch the current phrase to the previous phrase (bi-gram formed to the left of the phrase).
- * If we create or add to an explicit phrase to the right (bi-gram formed to the right of the phrase) 
- * then the iteration should maintain the same current phrase.  
+ * If the current phrase can create the max pair with either its start or end char, we continue processing
+ * the phrase until this condition is no longer valid.
  * 
  * @param [in] left_elem [int] the left elem of the max occuring bi-gram
  * @param [in] right_elem [int] the right elem of the max occuring bi-gram
@@ -1909,6 +1944,8 @@ void sourceBoundaries(int left_elem, int right_elem)
 
 /**
  * @brief Merge consecutive explicit phrases after phrase and source boundaries
+ * Only traverse through the explicit phrases to save time.
+ * @return void
  */
 
 void mergeConsecutiveExpPhrases()
@@ -1976,9 +2013,9 @@ void mergeConsecutiveExpPhrases()
  */
 void decreaseFrequency(int left, int right)
 {
-    // if (verbosity == 2){
-    //     spdlog::trace("Decrease frequency: ({},{})", printSymbol(left), printSymbol(right));
-    // }
+    if (verbosity == 2){
+        spdlog::trace("Decrease frequency: ({},{})", printSymbol(left), printSymbol(right));
+    }
     Tpair new_pair;
     new_pair.left = left;
     new_pair.right = right;
@@ -1998,9 +2035,9 @@ void decreaseFrequency(int left, int right)
  */
 void increaseFrequency(int left, int right)
 {
-    // if (verbosity == 2){
-    //     spdlog::trace("Increase frequency: ({},{})", printSymbol(left), printSymbol(right));
-    // }
+    if (verbosity == 2){
+        spdlog::trace("Increase frequency: ({},{})", printSymbol(left), printSymbol(right));
+    }
     Tpair new_pair;
     new_pair.left = left;
     new_pair.right = right;
@@ -2018,11 +2055,9 @@ void increaseFrequency(int left, int right)
  * 
  * RePair replaces the most occuring bi-gram with a new non-terminal symbol (n).
  * Before we do replacement, we have to check and correct the phrase and source boundary conditions.
- * If there is an explicit, we have to do normal pair by pair checking.
- * Non-explicit phrases, we can handle by looking at their ranges.
- * We also have to keep track of the frequency as we do the replacement.
- * 
- * Our goal is to handle the non-explicit phrases in time O(|phrases|). 
+ * For explicit phrase, we store all unique pairs in the explicit phrases in a hash table which gives us O(1) access to all the occurences of max pair.
+ * For non-explicit phrases, we query an interval tree to give us all the phrases that span the range of max pair in the reference so we only look at necessary phrases.
+ * We keep track of the frequency as we do the replacement.
  * 
  * @param [in] R [std::ofstream&] The file where we will write the rules.
  * @param [in] C [std::ofstream&] The file where we will write the compressed text.

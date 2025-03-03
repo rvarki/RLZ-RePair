@@ -4,6 +4,7 @@
 #include <string>
 #include <fstream>
 #include <cstdint>
+#include <node.h>
 
 extern "C" {
     #include "heap.h"
@@ -13,22 +14,38 @@ extern "C" {
     #include "hash.h"
 }
 
-uint64_t calculateParseBytes(std::ifstream& pfile);
+// Debug functiuons
 std::string printSymbol(int elem);
 void printAllRecords();
 void printRecord(const std::string message, const Trecord* orec);
 void printMaxPair(int new_symbol, const Trecord* orec);
 void printRef();
-void printPhraseList();
 void printHashRanges();
+void printPhrase(PhraseNode* curr_phrase);
+void printSupposedPhrase(PhraseNode* curr_phrase, std::list<int>::iterator leftIt);
+int invalidSameCharPair(int letter);
+bool checkHeap();
+int checkPhraseSize();
+void printPhraseList();
+bool checkExpPairs();
+bool checkPhraseBoundaries();
+bool checkSourceBoundaries();
+
+// Necessary functions
+uint64_t calculateParseBytes(std::ifstream& pfile);
 void prepareRef(std::vector<unsigned char>& rtext);
 void createMaxHeap(std::ifstream& pfile);
 void populatePhrases(std::ifstream& pfile);
-void repair(std::ofstream& R, std::ofstream& C);
+void buildIntervalTree();
+void updateExpPairs(PhraseNode* p, std::list<int>::iterator it, bool leftInsert);
+void updateMergeExpPairs(PhraseNode* p, std::list<int>::iterator it);
+void reassignExpPairs(PhraseNode* origPhrase, PhraseNode* newPhrase);
 void phraseBoundaries(int left_elem, int right_elem);
 void sourceBoundaries(int left_elem, int right_elem);
+void mergeConsecutiveExpPairs();
 void decreaseFrequency(int left_elem, int right_elem);
 void increaseFrequency(int left_elem, int right_elem);
+void repair(std::ofstream& R, std::ofstream& C);
 
 
 #endif  // REPAIR_H
