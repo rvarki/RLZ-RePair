@@ -124,6 +124,7 @@ std::chrono::duration<double> build_interval_time{0.0};
 std::chrono::duration<double> update_interval_time{0.0};
 std::chrono::duration<double> nonexplicit_phrase_time{0.0};
 std::chrono::duration<double> explicit_phrase_time{0.0};
+std::chrono::duration<double> merge_explicit_phrase_time{0.0};
 std::chrono::duration<double> hash_range_time{0.0};
 std::chrono::duration<double> update_bound_hash_time{0.0};
 std::chrono::duration<double> total_time{0.0};
@@ -1506,7 +1507,8 @@ void phraseBoundaries(int left_elem, int right_elem)
                 //std::pair<int,int> pboundPair = {curr_phrase->content.back(), next_phrase->content.front()}; // Remove the pbound entry between curr and next phrase
                 //pbound_pairs[pboundPair].erase(pbound_it);
 
-                PhraseNode* next_next_phrase = next_phrase->next;  
+                PhraseNode* next_next_phrase = next_phrase->next;
+                auto update_bound_hash_start = std::chrono::high_resolution_clock::now();
                 if (next_next_phrase != nullptr){
                     if (!next_next_phrase->exp){
                         auto pbound_it = pbound_it_map[next_phrase];
@@ -1523,6 +1525,9 @@ void phraseBoundaries(int left_elem, int right_elem)
                         pbound_it_map[curr_phrase] = std::prev(pbound_pairs[pboundPair].end());
                     }
                 }
+                auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+
                 // Do the re-assignment
                 auto l = std::prev(curr_phrase->content.end());
                 auto r = next_phrase->content.begin();
@@ -1767,6 +1772,8 @@ void sourceBoundaries(int left_elem, int right_elem)
                         auto pbound_it = pbound_it_map[curr_phrase];
                         pbound_pairs[pboundPair].erase(pbound_it);
                     }
+                    auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                    update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
                 }
 
                 // If the next phrase is explicit, we can add directly to it.
@@ -1918,6 +1925,7 @@ void mergeConsecutiveExpPhrases()
         PhraseNode* next_phrase = curr_phrase->next;
         if (next_phrase != nullptr && curr_phrase->exp && next_phrase->exp){
             // Update the boundary hash tables
+            auto update_bound_hash_start = std::chrono::high_resolution_clock::now();
             auto pbound_it = pbound_it_map[curr_phrase];
             pbound_pairs[{curr_phrase->content.back(), next_phrase->content.front()}].erase(pbound_it); // Delete the pbound entry between the curr and next phrase
 
@@ -1938,6 +1946,8 @@ void mergeConsecutiveExpPhrases()
                     pbound_it_map[curr_phrase] = std::prev(pbound_pairs[pboundPair].end());
                 }
             }
+            auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
+            update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
             
             auto l = std::prev(curr_phrase->content.end());
             auto r = next_phrase->content.begin();
@@ -2070,14 +2080,15 @@ void repair(std::ofstream& R, std::ofstream& C)
         auto pbound_end = std::chrono::high_resolution_clock::now();
         phrase_boundary_time += pbound_end - pbound_start;
 
-        mergeConsecutiveExpPhrases();
-
         auto sbound_start = std::chrono::high_resolution_clock::now();
         sourceBoundaries(left_elem, right_elem);
         auto sbound_end = std::chrono::high_resolution_clock::now();
         source_boundary_time += sbound_end - sbound_start;
 
+        auto merge_exp_start =  std::chrono::high_resolution_clock::now();
         mergeConsecutiveExpPhrases();
+        auto merge_exp_end =  std::chrono::high_resolution_clock::now();
+        merge_explicit_phrase_time += merge_exp_end - merge_exp_start;
         
         // Calculate number of invalid consecutive pairs of chars
         int maxLeft = orec->pair.left;
@@ -2753,7 +2764,9 @@ int main(int argc, char *argv[])
     spdlog::debug("Total Update Interval Tree Time (s): {:.6f}", std::chrono::duration<double>(update_interval_time).count());
     spdlog::debug("Total Non-explicit Phrase Time (s): {:.6f}", std::chrono::duration<double>(nonexplicit_phrase_time).count());
     spdlog::debug("Total Explicit Phrase Time (s): {:.6f}", std::chrono::duration<double>(explicit_phrase_time).count());
+    spdlog::debug("Total Merge Explicit Phrase Time (s): {:.6f}", std::chrono::duration<double>(merge_explicit_phrase_time).count());
     spdlog::debug("Total Hash Range Update Time (s): {:.6f}", std::chrono::duration<double>(hash_range_time).count());
+    spdlog::debug("Total Boundary Hash Range Update Time (s): {:.6f}", std::chrono::duration<double>(update_bound_hash_time).count());
     total_time = total_time_end - total_time_start;
     spdlog::debug("*********************************************");
     spdlog::debug("Total Time (s): {:.6f}", std::chrono::duration<double>(total_time).count());
