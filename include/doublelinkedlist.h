@@ -156,6 +156,7 @@ class PhraseLinkedList
                 head = newNode; 
             }
             nextNode->prev = newNode;
+            addToExpList(newNode);
             size++;
             return newNode;
         }
