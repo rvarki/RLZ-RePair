@@ -122,8 +122,6 @@ class PhraseLinkedList
     private:
         PhraseNode* head;
         PhraseNode* tail;
-        PhraseNode* exp_head;
-        PhraseNode* exp_tail;   
         int size;
 
     public:
@@ -139,8 +137,6 @@ class PhraseLinkedList
 
         PhraseNode* getHead(){ return head; }
         PhraseNode* getTail(){ return tail; }
-        PhraseNode* getExpHead() { return exp_head; }
-        PhraseNode* getExpTail() { return exp_tail; }
         int getSize(){ return size; }
 
         // Insert before specified PhraseNode
@@ -156,7 +152,6 @@ class PhraseLinkedList
                 head = newNode; 
             }
             nextNode->prev = newNode;
-            addToExpList(newNode);
             size++;
             return newNode;
         }
@@ -176,22 +171,6 @@ class PhraseLinkedList
                 currNode->next->prev = currNode->prev;
             } else {
                 tail = currNode->prev; // Update tail if removing the last node
-            }
-
-            // Update the exp-true list pointers
-            if (currNode->exp) {
-                if (currNode == exp_head) {
-                    exp_head = currNode->exp_next;
-                }
-                if (currNode == exp_tail) {
-                    exp_tail = currNode->exp_prev;
-                }
-                if (currNode->exp_prev) {
-                    currNode->exp_prev->exp_next = currNode->exp_next;
-                }
-                if (currNode->exp_next) {
-                    currNode->exp_next->exp_prev = currNode->exp_prev;
-                }
             }
 
             PhraseNode* prevNode = currNode->prev; // Store previous node before deleting
@@ -214,7 +193,6 @@ class PhraseLinkedList
                 head->prev = newNode;
                 head = newNode;
             }
-            addToExpList(newNode);
             size++;
             return newNode;
         }
@@ -243,7 +221,6 @@ class PhraseLinkedList
                 newNode->prev = tail;
                 tail = newNode;
             }
-            addToExpList(newNode);
             size++;
             return newNode;
         }
@@ -260,17 +237,6 @@ class PhraseLinkedList
             }
             size++;
             return newNode;
-        }
-
-        // Add a node to the exp-true list
-        void addToExpList(PhraseNode* node) {
-            if (!exp_head) {
-                exp_head = exp_tail = node;
-            } else {
-                exp_tail->exp_next = node;
-                node->exp_prev = exp_tail;
-                exp_tail = node;
-            }
         }
 };
 
