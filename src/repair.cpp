@@ -99,6 +99,14 @@ struct ExpPairEqual {
 
 std::unordered_map<std::pair<int, int>, std::unordered_set<ExpPair, ExpPairHash, ExpPairEqual>, pair_int_hash> exp_pairs; 
 
+// Hash table containing info about phrase boundaries (store the left phrase of the pair). 
+std::unordered_map<std::pair<int, int>, std::list<PhraseNode*>, pair_int_hash> pbound_pairs;
+std::unordered_map<PhraseNode*, std::list<PhraseNode*>::iterator> pbound_it_map;
+
+// Hash table containing info about source boundaries.
+std::unordered_map<int, std::unordered_set<PhraseNode*>> start_hash;
+std::unordered_map<int, std::unordered_set<PhraseNode*>> end_hash;
+
 // List of explicit and non explicit phrases
 PhraseLinkedList plist;
 
@@ -116,7 +124,9 @@ std::chrono::duration<double> build_interval_time{0.0};
 std::chrono::duration<double> update_interval_time{0.0};
 std::chrono::duration<double> nonexplicit_phrase_time{0.0};
 std::chrono::duration<double> explicit_phrase_time{0.0};
+std::chrono::duration<double> merge_explicit_phrase_time{0.0};
 std::chrono::duration<double> hash_range_time{0.0};
+std::chrono::duration<double> update_bound_hash_time{0.0};
 std::chrono::duration<double> total_time{0.0};
 
 /**
@@ -202,6 +212,7 @@ void printRecord(const std::string message, const Trecord* orec)
  * 
  * @param[in] new_symbol [int] the new non-terminal symbol to be added.
  * @param[in] orec [Trecord*] the record content to be printed.
+ * @return void
  */
 
 void printMaxPair(int new_symbol, const Trecord* orec)
@@ -234,7 +245,7 @@ void printRef()
 }
 
 /**
- * @brief Prints the hash table of bi-grams in the reference.
+ * @brief Prints the hash table of bi-grams in the reference. Debug purposes only.
  * @return void
  */
 void printHashRanges()
@@ -252,7 +263,9 @@ void printHashRanges()
 }
 
 /**
- * @brief Prints specific phrase
+ * @brief Prints specific phrase. Debug purposes only.
+ * @param[in] curr_phrase [PhraseNode*] The pointer of the phrase to be printed
+ * @return void
  */
 
 void printPhrase(PhraseNode* curr_phrase)
@@ -279,7 +292,11 @@ void printPhrase(PhraseNode* curr_phrase)
 }
 
 /**
- * @brief Print supposed phrase
+ * @brief Prints explicit phrase given an iterator to the list. Debug only.
+ * Usecase was in debugging updateMergeExpPairs. Most cases use printPhrase instead.
+ * @param[in] curr_phrase [PhraseNode*] the pointer of the explicit phrase to be printed.
+ * @param[in] leftIt [std::list<int>::iterator] an iterator to the list of the explicit phrase
+ * @return void
  */
 
 void printSupposedPhrase(PhraseNode* curr_phrase, std::list<int>::iterator leftIt)
@@ -298,11 +315,13 @@ void printSupposedPhrase(PhraseNode* curr_phrase, std::list<int>::iterator leftI
 }
 
 /**
- * @brief Calculate number of invalid consecutive same chars in the phrases
+ * @brief Calculate number of invalid consecutive same chars in the phrases. Debug only.
  * For example, eeee -> 1 (the 2nd ee)
  * For example, aaa -> 1 (the 2nd aa)
  * For example, iiiii -> 2 (2nd and 4th ii)
- * Assumes run after phrase and source boundary so no crossing boundary
+ * @warning Run only after phrase,source, and merge explicit phrase boundary because it does not account for pairs crossing phrases.
+ * @param[in] letter [int] the letter of the same pair to check.
+ * @return the number of invalid occurences across both the explicit and non-explicit phrases. 
  */
 
 int invalidSameCharPair(int letter)
@@ -379,7 +398,8 @@ int invalidSameCharPair(int letter)
 }
 
 /**
- * @brief Checks whether the frequencies in the heap is correct 
+ * @brief Checks whether the frequencies in the max heap are correct at any moment. Debug only.
+ * @return true if correct else false
  */
 
 bool checkHeap()
@@ -453,7 +473,9 @@ bool checkHeap()
 }
 
 /**
- * @brief Calculates the size of the phrases currently
+ * @brief Calculates the size of the phrases currently. Debug only.
+ * Used to make sure the size of the phrases was decreasing properly.
+ * @return the total size of all the phrases.
  */
 
 int checkPhraseSizes()
@@ -528,10 +550,9 @@ void printPhraseList()
 }
 
 /**
- * @brief Check the exp_pairs stored.
- * 
- * At any point in time the exp_pairs should be up to date
- * 
+ * @brief Check that the exp_pairs hash table stores only the correct information. Debug only.
+ * At any point in time the exp_pairs should be up to date.
+ * @return true if correct else false
  */
 bool checkExpPairs()
 {
@@ -585,13 +606,118 @@ bool checkExpPairs()
         std::pair<int, int> key = entry.first;
         if (exp_pairs_tmp[key].size() != 0){
             spdlog::error("Key should not exist: ({},{}) : {} pairs", printSymbol(key.first), printSymbol(key.second), exp_pairs_tmp[key].size());
+            return false;
         }
-        return false;
     }
-
-    spdlog::debug("Everything is correct");
+    spdlog::debug("Exp pairs is properly maintained");
     return true;
 }
+
+/**
+ * @brief Check the phrase boundary hash table for correctness. Debug only.
+ * Creates deep copy of pbound_pairs and pbound_it_map so should be safe to call now.
+ * @return true if phrase boundaries are correct else false.
+ */
+bool checkPhraseBoundaries()
+{
+    // Deep copy pbound_pairs
+    std::unordered_map<std::pair<int, int>, std::list<PhraseNode*>, pair_int_hash> pbound_pairs_tmp;
+    for (const auto& entry : pbound_pairs) {
+        const auto& key = entry.first;
+        const auto& originalList = entry.second;
+        
+        // Deep copy the list
+        std::list<PhraseNode*> newList;
+        for (PhraseNode* node : originalList) {
+            newList.push_back(node); // Copy the pointers (or clone if needed)
+        }
+        pbound_pairs_tmp[key] = std::move(newList);
+    }
+
+    // Rebuild pbound_it_map_tmp with new iterators
+    std::unordered_map<PhraseNode*, std::list<PhraseNode*>::iterator> pbound_it_map_tmp;
+    for (auto& entry : pbound_pairs_tmp) {
+        auto& key = entry.first;
+        auto& newList = entry.second;
+        
+        auto it = newList.begin();
+        for (; it != newList.end(); ++it) {
+            pbound_it_map_tmp[*it] = it;
+        }
+    }
+
+    PhraseNode* curr_phrase = plist.getHead();
+    PhraseNode* next_phrase = curr_phrase->next;
+    while(next_phrase != nullptr)
+    {
+        int left_elem, right_elem;
+        if (!curr_phrase->exp){
+            left_elem = rlist.findNearestRef(curr_phrase->rnode)->val;
+        }
+        else{
+            left_elem = curr_phrase->content.back();
+        }
+        if (!next_phrase->exp){
+            right_elem = rlist.findNearestRef(next_phrase->lnode)->val;
+        }
+        else{
+            right_elem = next_phrase->content.front();
+        }
+        auto pbound_it = pbound_it_map_tmp[curr_phrase];
+        pbound_pairs_tmp[{left_elem, right_elem}].erase(pbound_it);
+        curr_phrase = next_phrase;
+        next_phrase = next_phrase->next;
+    }
+    for (const auto& entry : pbound_pairs_tmp)
+    {
+        std::pair<int, int> key = entry.first;
+        if (pbound_pairs_tmp[key].size() != 0){
+            spdlog::error("Key should not exist: ({},{}) : {} pairs", printSymbol(key.first), printSymbol(key.second), pbound_pairs_tmp[key].size());
+            return false;
+        }
+    }
+    spdlog::debug("The phrase boundaries are correct");
+    return true;
+}
+
+/**
+ * @brief Check the source boundary hash tables for correctness. Debug only.
+ * @return true if correct else false
+ */
+ bool checkSourceBoundaries()
+ {
+    std::unordered_map<int, std::unordered_set<PhraseNode*>> start_hash_tmp(start_hash);
+    std::unordered_map<int, std::unordered_set<PhraseNode*>> end_hash_tmp(end_hash);
+    PhraseNode* curr_phrase = plist.getHead();
+    while(curr_phrase != nullptr)
+    {
+        if (!curr_phrase->exp){
+            int start_elem = rlist.findNearestRef(curr_phrase->lnode)->val;
+            int end_elem = rlist.findNearestRef(curr_phrase->rnode)->val;
+            start_hash_tmp[start_elem].erase(curr_phrase);
+            end_hash_tmp[end_elem].erase(curr_phrase);
+        }
+        curr_phrase = curr_phrase->next;
+    }
+    for (const auto& entry : start_hash_tmp)
+    {
+        int start = entry.first;
+        if (start_hash_tmp[start].size() != 0){
+            spdlog::error(" {} start count: {} pairs", printSymbol(start), start_hash_tmp[start].size());
+            return false;
+        }
+    }
+    for (const auto& entry : end_hash_tmp)
+    {
+        int end = entry.first;
+        if (end_hash_tmp[end].size() != 0){
+            spdlog::error(" {} end count: {} pairs", printSymbol(end), end_hash_tmp[end].size());
+            return false;
+        }
+    }
+    spdlog::debug("The start and end boundaries are correct");
+    return true;
+ }
 
 /**
  * @brief Convert the chars of reference to int.
@@ -741,7 +867,10 @@ void createMaxHeap(std::ifstream& pfile)
  * 
  * Each phrase created will be a non-explicit phrase. 
  * A non-explicit phrase stores left and right endpoints that references the reference.
- * Range for each phrase is [left,right] 
+ * Range for each phrase is [left,right]
+ * 
+ * Also populate hash tables for phrase boundary between phrases
+ * and hash tables storing the start and end char of each non-explicit phrase 
  * 
  * @param[in] pfile [std::ifstream&] the RLZ parse filestream
  * @return void 
@@ -750,6 +879,8 @@ void createMaxHeap(std::ifstream& pfile)
 void populatePhrases(std::ifstream& pfile)
 {
     uint64_t num_pairs, pos, len;
+    PhraseNode* prevPhrase;
+    PhraseNode* nextPhrase;
 
     // First uint64_t bytes tell how many (pos,len) pairs are stored in the parse file
     pfile.read(reinterpret_cast<char*>(&num_pairs), sizeof(uint64_t));
@@ -764,6 +895,23 @@ void populatePhrases(std::ifstream& pfile)
         {
             pfile.read(reinterpret_cast<char*>(&len), sizeof(uint64_t));
             plist.push_back(rarray[pos], rarray[pos+len-1]);
+            nextPhrase = plist.getTail();
+            // Only start adding to the phrase boundary hash table after the first phrase is added
+            if (i != 1)
+            {
+                auto update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                prevPhrase = plist.getTail()->prev;
+                pbound_pairs[{prevPhrase->rnode->val, nextPhrase->lnode->val}].push_back(prevPhrase);
+                pbound_it_map[prevPhrase] = std::prev(pbound_pairs[{prevPhrase->rnode->val, nextPhrase->lnode->val}].end());
+                auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+            }
+            // Add the start and end character of each phrase to the source boundary hash tables
+            auto update_bound_hash_start = std::chrono::high_resolution_clock::now();
+            start_hash[nextPhrase->lnode->val].insert(nextPhrase);
+            end_hash[nextPhrase->rnode->val].insert(nextPhrase);
+            auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
+            update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
         }
     }
 
@@ -772,14 +920,15 @@ void populatePhrases(std::ifstream& pfile)
     pfile.seekg(0, std::ios::beg);
 
     // Debug
-    // if (verbosity == 2){
-    //     spdlog::trace("The non-explicit phrases at the start");
-    //     printPhraseList();
-    // }
+    if (verbosity == 2){
+        spdlog::trace("The non-explicit phrases at the start");
+        printPhraseList();
+    }
 }
 
 /**
- * @brief Builds interval tree from the non-explicit phrases.
+ * @brief Builds interval tree from the non-explicit phrases at the start.
+ * @return void
  */
 
 void buildIntervalTree()
@@ -799,7 +948,11 @@ void buildIntervalTree()
 /**
  * @brief Ensures that consecutive same characters >2 do not have overlapping entries in exp_pairs.
  * When adding from left, we might have to update exp_pairs all pairs of exp_pairs. (ie. e + ee -> ee + e)
- * When adding from right, we check if the consecutive same characters are odd or even
+ * When adding from right, we wind the iterator back to the start of the same char run and then do what we do for left insert.
+ * @param[in] p [PhraseNode*] the explicit phrase of interest.
+ * @param[in] it [std::list<int>::iterator] either the left or right iterator to run of same chars
+ * @param[in] leftInsert [bool] whether the iterator is from the left or right of the run of same chars
+ * @return void
  */
 
 void updateExpPairs(PhraseNode* p, std::list<int>::iterator it, bool leftInsert)
@@ -863,7 +1016,16 @@ void updateExpPairs(PhraseNode* p, std::list<int>::iterator it, bool leftInsert)
 
 /** 
  * @brief Ensures that consecutive same characters >2 do not have overlapping entries in exp_pairs.
- * Used when merging explicit phrases together
+ * Used when merging explicit phrases together.
+ * @note When merging two explicit phrases together that both start and end with the same char,
+ * we only have access to iterators in the middle of the run (the left phrase end iterator or right phrase start iterator).
+ * Each iterator requires us to rewind to the start of the same run and then do the update to the same char pairs as necessary.
+ * This is essentially rightInsert of updateExpPairs (at least I think). This was not possible in the old version of 
+ * updateExpPairs since rightInsert did something else. Should think about replacing now.
+ * @todo Think about replacing this function with updateExpPairs rightInsert functionality now.
+ * @param[in] p [PhraseNode*] The left explicit phrase which is getting merged into.
+ * @param[in] it [std::list<int>::iterator] iterator within the run of the same chars.
+ * @return void
  */
 
 void updateMergeExpPairs(PhraseNode* p, std::list<int>::iterator it)
@@ -903,7 +1065,12 @@ void updateMergeExpPairs(PhraseNode* p, std::list<int>::iterator it)
 }
 
 /**
- * @brief Deletes the exp pairs assigned to one exp phrase and assigns to another exp phrase 
+ * @brief Deletes the exp pairs assigned to one exp phrase and assigns to another exp phrase.
+ * Used when merging two explicit phrases together since pair ownership of the phrase to be merged
+ * has to be transferred to the phrase which is getting merged into. 
+ * @param[in] origPhrase [PhraseNode*] the phrase to be merged
+ * @param[in] newPhrase [PhraseNode*] the phrase to be merged into.
+ * @return void
  */
 
 void reassignExpPairs(PhraseNode* origPhrase, PhraseNode* newPhrase)
@@ -931,12 +1098,72 @@ void reassignExpPairs(PhraseNode* origPhrase, PhraseNode* newPhrase)
 }
 
 /**
+ * @brief Merge consecutive explicit phrases during phrase and source boundaries
+ * @param[in] curr_phrase [PhraseNode*] The phrase to be merged into.
+ * @param[in] next_phrase [PhraseNode*] The phrase to be merged
+ * @return void
+ */
+
+ void mergeConsecutiveExpPhrases(PhraseNode* curr_phrase, PhraseNode* next_phrase)
+ {
+    auto merge_exp_start =  std::chrono::high_resolution_clock::now();
+    // Useful variable
+    std::pair<int,int> pboundPair;
+
+    if (next_phrase != nullptr && curr_phrase->next == next_phrase){
+        // Update the boundary hash tables
+        auto update_bound_hash_start = std::chrono::high_resolution_clock::now();
+        auto pbound_it = pbound_it_map[curr_phrase];
+        pbound_pairs[{curr_phrase->content.back(), next_phrase->content.front()}].erase(pbound_it); // Delete the pbound entry between the curr and next phrase
+
+        PhraseNode* next_next_phrase = next_phrase->next;
+        if (next_next_phrase != nullptr){
+            if (!next_next_phrase->exp){
+                pbound_it = pbound_it_map[next_phrase];
+                pboundPair = std::make_pair(next_phrase->content.back(), rlist.findNearestRef(next_next_phrase->lnode)->val); // Delete the pbound entry between the next phrase and next next phrase
+                pbound_pairs[pboundPair].erase(pbound_it);
+                pbound_pairs[pboundPair].push_back(curr_phrase); // Add the pbound entry between curr phrase and next next phrase
+                pbound_it_map[curr_phrase] = std::prev(pbound_pairs[pboundPair].end());
+            }
+            else{
+                pbound_it = pbound_it_map[next_phrase];
+                pboundPair = std::make_pair(next_phrase->content.back(), next_next_phrase->content.front()); // Delete the pbound entry between the next phrase and next next phrase
+                pbound_pairs[pboundPair].erase(pbound_it);
+                pbound_pairs[pboundPair].push_back(curr_phrase); // Add the pbound entry between curr phrase and next next phrase
+                pbound_it_map[curr_phrase] = std::prev(pbound_pairs[pboundPair].end());
+            }
+        }
+        auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
+        update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+        
+        auto l = std::prev(curr_phrase->content.end());
+        auto r = next_phrase->content.begin();
+        reassignExpPairs(next_phrase, curr_phrase); // Reassigns the pairs in next phrase to current phrase
+        curr_phrase->content.splice(curr_phrase->content.end(), next_phrase->content);
+        plist.remove(next_phrase); // Deletes the next phrase
+        // Add the new exp pair to exp_pairs
+        exp_pairs[{*l, *r}].insert(ExpPair(curr_phrase, l, r));
+        if (*l == *r){
+            updateMergeExpPairs(curr_phrase, l);
+        }
+    }
+    else{
+        spdlog::error("Somewhere the logic is wrong");
+    }
+    auto merge_exp_end =  std::chrono::high_resolution_clock::now();
+    merge_explicit_phrase_time += merge_exp_end - merge_exp_start;
+ }
+
+/**
  * @brief Process the phrase list for the phrase boundary condition.
  * 
  * If the rightmost elem of a non-explicit phrase and the non-explicit leftmost elem of the adjacent phrase 
  * form the provided bi-gram, both elements are removed from their respective phrases and added together to create 
  * an explicit phrase. If one of the phrases are explicit already, only from the non-explict phrase is the 
  * elem removed (since the other phrase is already explicit).
+ * 
+ * If after merging the curr phrase can still form the max pair with the next phrase, we do not explore
+ * that at the moment. Instead we will add the current phrase back to the list and process later.
  * 
  * @param [in] left_elem [int] the left elem of the max occuring bi-gram
  * @param [in] right_elem [int] the right elem of the max occuring bi-gram
@@ -946,14 +1173,12 @@ void reassignExpPairs(PhraseNode* origPhrase, PhraseNode* newPhrase)
 
 void phraseBoundaries(int left_elem, int right_elem)
 {
-    PhraseNode* curr_phrase = plist.getHead();
-
-    // Iterate through the phrases in the phrase list
-    while (curr_phrase != nullptr) 
+    // Iterate through the phrases with the phrase boundary of interest
+    std::list<PhraseNode*>& pboundaries = pbound_pairs[{left_elem, right_elem}];
+    std::list<PhraseNode*>::iterator it = pboundaries.begin();
+    while (it != pboundaries.end()) 
     {
-        curr_phrase->ltmp = -1;
-        curr_phrase->rtmp = -1;
-
+        PhraseNode* curr_phrase = *it;
         PhraseNode* next_phrase = curr_phrase->next;
         // If there is a next phrase, check the phrase boundaries.
         if (next_phrase != nullptr)
@@ -963,6 +1188,13 @@ void phraseBoundaries(int left_elem, int right_elem)
             {
                 if (rlist.findNearestRef(curr_phrase->rnode)->val == left_elem && rlist.findNearestRef(next_phrase->lnode)->val == right_elem)
                 {
+                    // Some phrases that could be important later
+                    PhraseNode* prev_phrase = nullptr;
+                    PhraseNode* next_next_phrase = nullptr;
+
+                    // Variables that are useful to define
+                    std::pair<int,int> pboundPair;
+
                     // Indicates whether a non-explicit phrase got deleted.
                     bool deleteCurr = false;
                     bool deleteNext = false;
@@ -971,72 +1203,236 @@ void phraseBoundaries(int left_elem, int right_elem)
                     content.push_back(left_elem);
                     content.push_back(right_elem);
 
-                    // First remove the offending entries in the tree.
-                    //spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
-                    auto update_interval_start = std::chrono::high_resolution_clock::now();
-                    phrase_tree.remove({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
-                    auto update_interval_end = std::chrono::high_resolution_clock::now();
-                    update_interval_time += update_interval_end - update_interval_start;
-                    //spdlog::trace("Removing ({},{}) from tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
-                    update_interval_start = std::chrono::high_resolution_clock::now();
-                    phrase_tree.remove({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
-                    update_interval_end = std::chrono::high_resolution_clock::now();
-                    update_interval_time += update_interval_end - update_interval_start;
-
                     // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
                     curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
                     curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode);
                     next_phrase->lnode = rlist.findNearestRef(next_phrase->lnode);
                     next_phrase->rnode = rlist.findNearestRef(next_phrase->rnode);
 
+                    // First remove the offending entries in the tree.
+                    spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                    auto update_interval_start = std::chrono::high_resolution_clock::now();
+                    phrase_tree.remove({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                    auto update_interval_end = std::chrono::high_resolution_clock::now();
+                    update_interval_time += update_interval_end - update_interval_start;
+                    spdlog::trace("Removing ({},{}) from tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                    update_interval_start = std::chrono::high_resolution_clock::now();
+                    phrase_tree.remove({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
+                    update_interval_end = std::chrono::high_resolution_clock::now();
+                    update_interval_time += update_interval_end - update_interval_start;
+
+                    // Dealing with boundary hash tables
+                    auto update_bound_hash_start = std::chrono::high_resolution_clock::now(); 
+                    end_hash[curr_phrase->rnode->val].erase(curr_phrase); // Remove the last char of the curr phrase in end hash
+                    if (curr_phrase->lnode == curr_phrase->rnode){ // If the curr phrase is length 1 then we are going to delete it. So have to prepare...
+                        start_hash[curr_phrase->lnode->val].erase(curr_phrase); // Remove the last char from start hash
+                        prev_phrase = curr_phrase->prev;
+                        if (prev_phrase != nullptr){ // If the curr phrase is not the start of the phrase list
+                            auto pbound_it = pbound_it_map[prev_phrase]; // Have to remove the pbound entry of the previous phrase + curr phrase
+                            if (!prev_phrase->exp){
+                                pboundPair = std::make_pair(rlist.findNearestRef(prev_phrase->rnode)->val, curr_phrase->lnode->val);
+                                pbound_pairs[pboundPair].erase(pbound_it);
+                            }
+                            else{
+                                pboundPair = std::make_pair(prev_phrase->content.back(), curr_phrase->lnode->val);
+                                pbound_pairs[pboundPair].erase(pbound_it);
+                            }
+                        }
+                    }
+                    start_hash[next_phrase->lnode->val].erase(next_phrase); // Remove the first char of the next phrase in start hash
+                    if (next_phrase->lnode == next_phrase->rnode){ // If the next phrase is length 1 then we are going to delete it. So have to prepare...
+                        end_hash[next_phrase->rnode->val].erase(next_phrase); // Remove the lst char of the next phrase in end hash
+                        next_next_phrase = next_phrase->next;
+                        if (next_next_phrase != nullptr){ //If the next phrase is not the end of the phrase list
+                            auto pbound_it = pbound_it_map[next_phrase]; // Have to remove the pbound entry of the next phrase + next next phrase
+                            if (!next_next_phrase->exp){
+                                pboundPair = std::make_pair(next_phrase->rnode->val, rlist.findNearestRef(next_next_phrase->lnode)->val);
+                                pbound_pairs[pboundPair].erase(pbound_it);
+                            }
+                            else{
+                                pboundPair = std::make_pair(next_phrase->rnode->val, next_next_phrase->content.front());
+                                pbound_pairs[pboundPair].erase(pbound_it);
+                            }
+                        }
+                    }
+                    auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                    update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+
+                    // Update the pointers of the non-explicit phrases
                     curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode->prev);
                     next_phrase->lnode = rlist.findForwardRef(next_phrase->lnode);
-                    PhraseNode* expPhrase = plist.insert(next_phrase, content);
+                    // Insert the explicit phrase to phrase list
+                    PhraseNode* exp_phrase = plist.insert(next_phrase, content);
 
                     // Add the new exp pair to exp_pairs
-                    auto l = expPhrase->content.begin();
-                    auto r = std::prev(expPhrase->content.end());
-                    exp_pairs[{*l, *r}].insert(ExpPair(expPhrase, l, r));
+                    auto l = exp_phrase->content.begin();
+                    auto r = std::prev(exp_phrase->content.end());
+                    exp_pairs[{*l, *r}].insert(ExpPair(exp_phrase, l, r));
                     // Only two characters guaranteed so do not have to check consecutive characters
 
                     // If the current or next phrases are empty we delete
                     if (curr_phrase->rnode == nullptr || curr_phrase->lnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){
-                        deleteCurr = true; 
-                        curr_phrase = plist.remove(curr_phrase);
+                        deleteCurr = true;
+                        prev_phrase = curr_phrase->prev; // Set the previous phrase
+                        plist.remove(curr_phrase);
                     }
                     if (next_phrase->rnode == nullptr || next_phrase->lnode == nullptr || next_phrase->lnode->pos > next_phrase->rnode->pos){
                         deleteNext = true;
-                        next_phrase = plist.remove(next_phrase);  
+                        next_next_phrase = next_phrase->next; // Set the next next phrase
+                        plist.remove(next_phrase);  
                     }
 
                     // Update the tree with the new entries
+                    // If both the current and next phrase still exist
                     if (!deleteCurr && !deleteNext){
-                        //spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                        spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
                         update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
                         update_interval_end = std::chrono::high_resolution_clock::now();
                         update_interval_time += update_interval_end - update_interval_start;
-                        //spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                        spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
                         update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.insert({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
                         update_interval_end = std::chrono::high_resolution_clock::now();
                         update_interval_time += update_interval_end - update_interval_start;
+
+                        update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                        end_hash[curr_phrase->rnode->val].insert(curr_phrase); // Update the end hash with new right value of curr phrase
+                        start_hash[next_phrase->lnode->val].insert(next_phrase); // Update the start hash the new left value of the next phrase
+                        pboundPair = std::make_pair(curr_phrase->rnode->val, exp_phrase->content.front());  // Add boundary between the curr phrase + new exp phrase to tne end of the pbound list 
+                        pbound_pairs[pboundPair].push_back(curr_phrase);
+                        pbound_it_map[curr_phrase] = std::prev(pbound_pairs[pboundPair].end()); // Update the curr phrase pbound iterator 
+                        pboundPair = std::make_pair(exp_phrase->content.back(), next_phrase->lnode->val);
+                        pbound_pairs[pboundPair].push_back(exp_phrase); // Add boundary between the new exp phrase and the next phrase  to the end of the pbound list
+                        pbound_it_map[exp_phrase] = std::prev(pbound_pairs[pboundPair].end()); // Update/Add the exp phrase pbound iterator
+
+                        update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                        update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
                     }
+                    // If the current phrase is deleted but the next phrase still exists
                     else if (deleteCurr && !deleteNext){
-                        //spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                        spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
                         update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.insert({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
                         update_interval_end = std::chrono::high_resolution_clock::now();
-                        update_interval_time += update_interval_end - update_interval_start;
+                        update_interval_time += update_interval_end - update_interval_start;           
+                        update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                        start_hash[next_phrase->lnode->val].insert(next_phrase); // Only update the start of the new left value of next phrase since curr phrase got deleted.
+                        pboundPair = std::make_pair(exp_phrase->content.back(), next_phrase->lnode->val);
+                        pbound_pairs[pboundPair].push_back(exp_phrase); // Add the pbound entry between new exp phrase + next phrase
+                        pbound_it_map[exp_phrase] = std::prev(pbound_pairs[pboundPair].end()); // Update/Add the exp phrase pbound iterator
+                        if (prev_phrase != nullptr){ // If the curr phrase was not the head of the phrase list
+                            if (!prev_phrase->exp){ 
+                                pboundPair = std::make_pair(rlist.findNearestRef(prev_phrase->rnode)->val, exp_phrase->content.front());
+                                pbound_pairs[pboundPair].push_back(prev_phrase); // Add the pbound entry between prev phrase + new exp phrase
+                                pbound_it_map[prev_phrase] = std::prev(pbound_pairs[pboundPair].end()); // Update the prev phrase pbound entry
+                            }
+                            else{
+                                pboundPair = std::make_pair(prev_phrase->content.back(), exp_phrase->content.front());
+                                pbound_pairs[pboundPair].push_back(prev_phrase);  // Add the pbound entry between prev phrase + new exp phrase
+                                pbound_it_map[prev_phrase] = std::prev(pbound_pairs[pboundPair].end()); // Update the prev phrase pbound entry
+                                // If previous phrase is explicit and we have deleted the current phrase that means that two consecutive exp phrases must exist so merge
+                                mergeConsecutiveExpPhrases(prev_phrase, exp_phrase);
+                            }
+                        }
+                        update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                        update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
                     }
+                    // If current phrase is not deleted but next phrase is deleted
                     else if (!deleteCurr && deleteNext){
-                        //spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                        spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
                         update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
                         update_interval_end = std::chrono::high_resolution_clock::now();
                         update_interval_time += update_interval_end - update_interval_start;
+                        
+                        update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                        end_hash[curr_phrase->rnode->val].insert(curr_phrase); // Only update the start of the new right value since the next phrase is deleted
+                        pboundPair = std::make_pair(curr_phrase->rnode->val, exp_phrase->content.front());
+                        pbound_pairs[pboundPair].push_back(curr_phrase); // Add the pbound entry between the curr phrase and the new exp phrase
+                        pbound_it_map[curr_phrase] = std::prev(pbound_pairs[pboundPair].end()); // Update the iterator of curr phrase
+                        if (next_next_phrase != nullptr){
+                            if (!next_next_phrase->exp){ // If the next phrase was not the tail of the phrase list
+                                pboundPair = std::make_pair(exp_phrase->content.back(), rlist.findNearestRef(next_next_phrase->lnode)->val); // Add the pbound entry between the exp phrase + next next phrase
+                                pbound_pairs[pboundPair].push_back(exp_phrase);
+                                pbound_it_map[exp_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                            }
+                            else{
+                                pboundPair = std::make_pair(exp_phrase->content.back(), next_next_phrase->content.front()); // Add the pbound entry between the exp phrase + next next phrase
+                                pbound_pairs[pboundPair].push_back(exp_phrase);
+                                pbound_it_map[exp_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                                // If next next phrase is explicit and we have deleted the next phrase that means that two consecutive exp phrases must exist so merge
+                                mergeConsecutiveExpPhrases(exp_phrase, next_next_phrase);
+                            }
+                        }
+                        update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                        update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
                     }
-                    continue;
+                    // Both the current and next phrase are deleted
+                    else{ 
+                        update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                        bool mergedPrev = false; // If scenario occurs where two non-explicit phrases (of size 1) are flanked by two explicit phrases. We need to merge the new explicit phrase with prev phrase. If we do that then have to merge next next phrase with prev phrase since new exp phrase will not exist
+                        if (prev_phrase != nullptr){
+                            if (!prev_phrase->exp){
+                                pboundPair = std::make_pair(rlist.findNearestRef(prev_phrase->rnode)->val, exp_phrase->content.front());
+                                pbound_pairs[pboundPair].push_back(prev_phrase);
+                                pbound_it_map[prev_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                            }
+                            else{
+                                pboundPair = std::make_pair(prev_phrase->content.back(), exp_phrase->content.front());
+                                pbound_pairs[pboundPair].push_back(prev_phrase);
+                                pbound_it_map[prev_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                                // If both are deleted and the previous phrase is explicit
+                                mergedPrev = true;
+                                // Make pbound connection between exp phrase and next next phrase now since it is needed for mergeConsecutiveExpPhrases
+                                if (next_next_phrase != nullptr){
+                                    if (!next_next_phrase->exp){
+                                        pboundPair = std::make_pair(exp_phrase->content.back(), rlist.findNearestRef(next_next_phrase->lnode)->val);
+                                        pbound_pairs[pboundPair].push_back(exp_phrase);
+                                        pbound_it_map[exp_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                                    }
+                                    else{
+                                        pboundPair = std::make_pair(exp_phrase->content.back(), next_next_phrase->content.front());
+                                        pbound_pairs[pboundPair].push_back(exp_phrase);
+                                        pbound_it_map[exp_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                                    }
+                                }
+                                mergeConsecutiveExpPhrases(prev_phrase, exp_phrase); // exp phrase ceases to exist
+                            }
+                        }
+                        if (next_next_phrase != nullptr){
+                            if (!next_next_phrase->exp){
+                                if (mergedPrev){ // If we have merged the new exp phrase with the prev phrase earlier
+                                    //This should already exist if we previously merged explicit pairs
+                                    //pboundPair = std::make_pair(prev_phrase->content.back(), rlist.findNearestRef(next_next_phrase->lnode)->val);
+                                    //pbound_pairs[pboundPair].push_back(prev_phrase);
+                                    //pbound_it_map[prev_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                                }
+                                else{ // The new exp phrase still exists 
+                                    pboundPair = std::make_pair(exp_phrase->content.back(), rlist.findNearestRef(next_next_phrase->lnode)->val);
+                                    pbound_pairs[pboundPair].push_back(exp_phrase);
+                                    pbound_it_map[exp_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                                }
+                            }
+                            else{
+                                if (mergedPrev){ // If we have merged the exp phrase with the prev phrase prior
+                                    //This should already exist if we previously merged explicit pairs
+                                    //pboundPair = std::make_pair(prev_phrase->content.back(), next_next_phrase->content.front());
+                                    //pbound_pairs[pboundPair].push_back(prev_phrase);
+                                    //pbound_it_map[prev_phrase] = std::prev(pbound_pairs[pboundPair].end()); 
+                                    mergeConsecutiveExpPhrases(prev_phrase, next_next_phrase);
+                                }
+                                else{ // The new exp phrase still exists
+                                    pboundPair = std::make_pair(exp_phrase->content.back(), next_next_phrase->content.front());
+                                    pbound_pairs[pboundPair].push_back(exp_phrase);
+                                    pbound_it_map[exp_phrase] = std::prev(pbound_pairs[pboundPair].end()); 
+                                    mergeConsecutiveExpPhrases(exp_phrase, next_next_phrase);
+                                }
+                            }
+                        }
+                        update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                        update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+                    }
                 }
             }
             // Current phrase not explicit and next phrase explicit
@@ -1046,17 +1442,45 @@ void phraseBoundaries(int left_elem, int right_elem)
                 {
                     // Indicates whether a non-explicit phrase got deleted.
                     bool deleteCurr = false;
-                    // First remove the offending entry from the tree
-                    //spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
-                    auto update_interval_start = std::chrono::high_resolution_clock::now();
-                    phrase_tree.remove({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
-                    auto update_interval_end = std::chrono::high_resolution_clock::now();
-                    update_interval_time += update_interval_end - update_interval_start;
+
+                    // Some phrases that could be important later
+                    PhraseNode* prev_phrase = nullptr;
+
+                    // Variables that are useful to define
+                    std::pair<int,int> pboundPair;
 
                     // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
                     curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
                     curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode);
 
+                    // First remove the offending entry from the tree
+                    spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                    auto update_interval_start = std::chrono::high_resolution_clock::now();
+                    phrase_tree.remove({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
+                    auto update_interval_end = std::chrono::high_resolution_clock::now();
+                    update_interval_time += update_interval_end - update_interval_start;
+
+                    auto update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                    end_hash[curr_phrase->rnode->val].erase(curr_phrase); // Have to remove the last char of curr phrase from end hash
+                    if (curr_phrase->lnode == curr_phrase->rnode){ // If curr phrase is size 1 then we are going to delete it now. Cleanup...
+                        start_hash[curr_phrase->lnode->val].erase(curr_phrase); // Remove start char from start hash
+                        prev_phrase = curr_phrase->prev;
+                        if (prev_phrase != nullptr){ // If the curr phrase was not head of phrase list
+                            auto pbound_it = pbound_it_map[prev_phrase]; // Have to remove pbound entry between prev phrase and curr phrase
+                            if (!prev_phrase->exp){
+                                pboundPair = std::make_pair(rlist.findNearestRef(prev_phrase->rnode)->val, curr_phrase->lnode->val);
+                                pbound_pairs[pboundPair].erase(pbound_it);
+                            }
+                            else{
+                                pboundPair = std::make_pair(prev_phrase->content.back(), curr_phrase->lnode->val);
+                                pbound_pairs[pboundPair].erase(pbound_it);
+                            }
+                        }
+                    }
+                    auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                    update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+
+                    // Getting the iterators
                     auto r = next_phrase->content.begin();
                     next_phrase->content.push_front(left_elem);
                     auto l = next_phrase->content.begin();
@@ -1070,18 +1494,46 @@ void phraseBoundaries(int left_elem, int right_elem)
                     // If the non-explicit phrase is empty we delete it.
                     if (curr_phrase->rnode == nullptr || curr_phrase->lnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){ 
                         deleteCurr = true;
-                        curr_phrase = plist.remove(curr_phrase);
+                        prev_phrase = curr_phrase->prev;
+                        plist.remove(curr_phrase);
                     }
 
-                    // Update the tree with the new entry
+                    // If the current phrase is not deleted
                     if (!deleteCurr){
-                        //spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                        spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
                         update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
                         update_interval_end = std::chrono::high_resolution_clock::now();
                         update_interval_time += update_interval_end - update_interval_start;
+                       
+                        update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                        end_hash[curr_phrase->rnode->val].insert(curr_phrase); // Have to update end hash with new right value
+                        pboundPair = std::make_pair(curr_phrase->rnode->val, next_phrase->content.front()); // Add new pbound entry between curr phrase and next phrase
+                        pbound_pairs[pboundPair].push_back(curr_phrase); // Add new pbound entry to list
+                        pbound_it_map[curr_phrase] = std::prev(pbound_pairs[pboundPair].end()); // Update curr phrase iterator
+                        update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                        update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
                     }
-                    continue;
+                    // Current phrase is deleted
+                    else{
+                        update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                        if (prev_phrase != nullptr){
+                            if (!prev_phrase->exp){
+                                pboundPair = std::make_pair(rlist.findNearestRef(prev_phrase->rnode)->val, next_phrase->content.front());
+                                pbound_pairs[pboundPair].push_back(prev_phrase);
+                                pbound_it_map[prev_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                            }
+                            else{
+                                pboundPair = std::make_pair(prev_phrase->content.back(), next_phrase->content.front());
+                                pbound_pairs[pboundPair].push_back(prev_phrase);
+                                pbound_it_map[prev_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                                // The prev phrase is explicit and next phrase is explicit so merge
+                                mergeConsecutiveExpPhrases(prev_phrase, next_phrase);
+                            }
+                        }
+                        update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                        update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+                    }
                 }
             }
             // Current phrase explicit and next phrase not explicit
@@ -1091,17 +1543,46 @@ void phraseBoundaries(int left_elem, int right_elem)
                 {
                     // Indicates whether a non-explicit phrase got deleted.
                     bool deleteNext = false;
+
+                    // Some phrases that could be important later
+                    PhraseNode* next_next_phrase = nullptr;
+
+                    // Variables that are useful to define
+                    std::pair<int,int> pboundPair;
+                    
+                    // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
+                    next_phrase->lnode = rlist.findNearestRef(next_phrase->lnode);
+                    next_phrase->rnode = rlist.findNearestRef(next_phrase->rnode);
+
                     // First remove the offending entry from the tree
-                    //spdlog::trace("Removing ({},{}) from tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                    spdlog::trace("Removing ({},{}) from tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
                     auto update_interval_start = std::chrono::high_resolution_clock::now();
                     phrase_tree.remove({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
                     auto update_interval_end = std::chrono::high_resolution_clock::now();
                     update_interval_time += update_interval_end - update_interval_start;
 
-                    // Only when modifying the tree can the lnode and rnode pointers of the phrases be updated.
-                    next_phrase->lnode = rlist.findNearestRef(next_phrase->lnode);
-                    next_phrase->rnode = rlist.findNearestRef(next_phrase->rnode);
+                    
+                    auto update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                    start_hash[next_phrase->lnode->val].erase(next_phrase); // Remove the first char from start hash of the next phrase
+                    if (next_phrase->lnode == next_phrase->rnode){ // If the next phrase is length 1 then we are going to delete. Clean up...
+                        end_hash[next_phrase->rnode->val].erase(next_phrase); // Remove the last char from end hash of the next phrase
+                        next_next_phrase = next_phrase->next; // If the next next phrase is not nullptr
+                        if (next_next_phrase != nullptr){
+                            auto pbound_it = pbound_it_map[next_phrase]; // Remove the current pbound entry between next phrase + next next phrase
+                            if (!next_next_phrase->exp){
+                                pboundPair = std::make_pair(next_phrase->rnode->val, rlist.findNearestRef(next_next_phrase->lnode)->val);
+                                pbound_pairs[pboundPair].erase(pbound_it);
+                            }
+                            else{
+                                pboundPair = std::make_pair(next_phrase->rnode->val, next_next_phrase->content.front());
+                                pbound_pairs[pboundPair].erase(pbound_it);
+                            }
+                        }
+                    }
+                    auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                    update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
 
+                    // Getting the iterators
                     auto l = std::prev(curr_phrase->content.end());
                     curr_phrase->content.push_back(right_elem);
                     auto r = std::prev(curr_phrase->content.end());
@@ -1114,22 +1595,77 @@ void phraseBoundaries(int left_elem, int right_elem)
                     next_phrase->lnode = rlist.findForwardRef(next_phrase->lnode);
                     if (next_phrase->rnode == nullptr || next_phrase->lnode == nullptr || next_phrase->lnode->pos > next_phrase->rnode->pos){
                         deleteNext = true;
-                        next_phrase = plist.remove(next_phrase);
+                        next_next_phrase = next_phrase->next;
+                        plist.remove(next_phrase);
                     }
 
-                    // Update the tree with the new entry
+                    // If the next phrase is not deleted
                     if (!deleteNext){
-                        //spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
+                        spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode->pos, next_phrase->rnode->pos);
                         update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.insert({next_phrase->lnode->pos, next_phrase->rnode->pos}, next_phrase);
                         update_interval_end = std::chrono::high_resolution_clock::now();
                         update_interval_time += update_interval_end - update_interval_start;
+                        
+                        update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                        start_hash[next_phrase->lnode->val].insert(next_phrase); // Update the start hash with new start value of next phrase
+                        pboundPair = std::make_pair(curr_phrase->content.back(), next_phrase->lnode->val); // Add new pbound entry between curr phrase + next phrase
+                        pbound_pairs[pboundPair].push_back(curr_phrase); 
+                        pbound_it_map[curr_phrase] = std::prev(pbound_pairs[pboundPair].end()); // Update curr phrase pbound iterator
+                        update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                        update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
                     }
-                    continue;
+                    // Next phrase is deleted
+                    else{
+                        update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                        if (next_next_phrase != nullptr){
+                            if (!next_next_phrase->exp){
+                                pboundPair = std::make_pair(curr_phrase->content.back(), rlist.findNearestRef(next_next_phrase->lnode)->val);
+                                pbound_pairs[pboundPair].push_back(curr_phrase);
+                                pbound_it_map[curr_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                            }
+                            else{
+                                pboundPair = std::make_pair(curr_phrase->content.back(), next_next_phrase->content.front());
+                                pbound_pairs[pboundPair].push_back(curr_phrase);
+                                pbound_it_map[curr_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                                // The curr phrase is explicit and the next next phrase is explicit so two consecutive exp phrases to merge
+                                mergeConsecutiveExpPhrases(curr_phrase, next_next_phrase);
+                            }
+                        }
+                        update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                        update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+                    }
                 }
             }
             // Both explicit phrases, move content of next phrase into first phrase and delete next phrase
             else{
+                // Can't do this since it invalidates the current while loop iterator 
+                //auto pbound_it = pbound_it_map[curr_phrase];
+                //std::pair<int,int> pboundPair = {curr_phrase->content.back(), next_phrase->content.front()}; // Remove the pbound entry between curr and next phrase
+                //pbound_pairs[pboundPair].erase(pbound_it);
+
+                PhraseNode* next_next_phrase = next_phrase->next;
+                auto update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                if (next_next_phrase != nullptr){
+                    if (!next_next_phrase->exp){
+                        auto pbound_it = pbound_it_map[next_phrase];
+                        std::pair<int,int> pboundPair = std::make_pair(next_phrase->content.back(), rlist.findNearestRef(next_next_phrase->lnode)->val);
+                        pbound_pairs[pboundPair].erase(pbound_it); // Remove pbound entry between next phrase + next next phrase
+                        pbound_pairs[pboundPair].push_back(curr_phrase); // Add the pbound entry between curr phrase and next next phrase
+                        pbound_it_map[curr_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                    }
+                    else{
+                        auto pbound_it = pbound_it_map[next_phrase];
+                        std::pair<int,int> pboundPair = std::make_pair(next_phrase->content.back(), next_next_phrase->content.front());
+                        pbound_pairs[pboundPair].erase(pbound_it);
+                        pbound_pairs[pboundPair].push_back(curr_phrase);
+                        pbound_it_map[curr_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                    }
+                }
+                auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+
+                // Do the re-assignment
                 auto l = std::prev(curr_phrase->content.end());
                 auto r = next_phrase->content.begin();
                 reassignExpPairs(next_phrase, curr_phrase); // Reassigns the pairs in next phrase to current phrase
@@ -1140,22 +1676,23 @@ void phraseBoundaries(int left_elem, int right_elem)
                 if (*l == *r){
                     updateMergeExpPairs(curr_phrase, l);
                 }
-                continue;
             }
-
             // Update the phrase if it gets to this point
-            curr_phrase = curr_phrase->next;
+            it++;
         }
-        else{ // No more phrase boundaries left
-            break;
+        else{
+            spdlog::error("The next phrase should never be nullptr in phrase boundaries");
         }
     }
 
+    // Remove the entries from hash table
+    pbound_pairs.erase({left_elem, right_elem});
+
     // Debug
-    // if (verbosity == 2){
-    //     spdlog::trace("Phrase list after phrase boundary condition.");
-    //     printPhraseList();
-    // }
+    if (verbosity == 2){
+        spdlog::trace("Phrase list after phrase boundary condition.");
+        printPhraseList();
+    }
 }
 
 /**
@@ -1165,10 +1702,8 @@ void phraseBoundaries(int left_elem, int right_elem)
  * or the leftmost elem of a non-explicit phrase and the previous elem in the reference form the provided bi-gram
  * then remove the offending elem from the non-explicit phrase and create an explicit phrase.
  * 
- * This function should uphold the commitment that when we create or add to an explicit phrase to the left of the
- * current phrase that we switch the current phrase to the previous phrase (bi-gram formed to the left of the phrase).
- * If we create or add to an explicit phrase to the right (bi-gram formed to the right of the phrase) 
- * then the iteration should maintain the same current phrase.  
+ * If the current phrase can create the max pair with either its start or end char, we continue processing
+ * the phrase until this condition is no longer valid.
  * 
  * @param [in] left_elem [int] the left elem of the max occuring bi-gram
  * @param [in] right_elem [int] the right elem of the max occuring bi-gram
@@ -1178,10 +1713,12 @@ void phraseBoundaries(int left_elem, int right_elem)
  */
 void sourceBoundaries(int left_elem, int right_elem)
 {
-    PhraseNode* curr_phrase = plist.getHead();
-    // Iterate through the phrases in the phrase list
-    while (curr_phrase != nullptr) 
+    // Iterate through the phrases in the starts set
+    std::unordered_set<PhraseNode*> starts = start_hash[right_elem];
+    std::unordered_set<PhraseNode*>::iterator it = starts.begin();
+    while (it != starts.end()) 
     {
+        PhraseNode* curr_phrase = *it;
         // Check if the curr phrase is explicit or not
         if (!(curr_phrase->exp))
         {
@@ -1189,9 +1726,32 @@ void sourceBoundaries(int left_elem, int right_elem)
             RefNode* rightElem = rlist.findNearestRef(curr_phrase->lnode);
             RefNode* leftElem = rlist.findNearestRef(rightElem->prev);
 
+            // Nice variable to have
+            std::pair<int,int> pboundPair;
+
             // If the bi-gram can be formed then make the leftmost element of the current phrase an explicit phrase of its own
             if (leftElem != nullptr && rightElem != nullptr && leftElem->val == left_elem && rightElem->val == right_elem){
                 PhraseNode* prev_phrase = curr_phrase->prev;
+                PhraseNode* next_phrase = nullptr;
+                PhraseNode* exp_phrase = nullptr;
+
+                // Always have to delete pbound entry between prev phrase + current phrase
+                if (prev_phrase != nullptr){ 
+                    auto update_bound_hash_start = std::chrono::high_resolution_clock::now(); 
+                    if (!prev_phrase->exp){
+                        pboundPair = std::make_pair(rlist.findNearestRef(prev_phrase->rnode)->val, rlist.findNearestRef(curr_phrase->lnode)->val);
+                        auto pbound_it = pbound_it_map[prev_phrase];
+                        pbound_pairs[pboundPair].erase(pbound_it);
+                    }
+                    else{
+                        pboundPair = std::make_pair(prev_phrase->content.back(), rlist.findNearestRef(curr_phrase->lnode)->val);
+                        auto pbound_it = pbound_it_map[prev_phrase];
+                        pbound_pairs[pboundPair].erase(pbound_it);
+                    }
+                    auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                    update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+                }
+
                 // If the previous phrase is explicit, we can add directly to it.
                 if (prev_phrase != nullptr && prev_phrase->exp){
                     auto l = std::prev(prev_phrase->content.end());
@@ -1205,15 +1765,26 @@ void sourceBoundaries(int left_elem, int right_elem)
                 }
                 // We have to create new explicit phrase anyways
                 else{
+                    // Add new explicit phrase before current phrase
                     std::list<int> content;
                     content.push_back(right_elem);
                     plist.insert(curr_phrase, content);
+                    // Update the hash table if only the old previous phrase is not nullptr
+                    if (prev_phrase != nullptr){
+                        auto update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                        exp_phrase = prev_phrase->next;
+                        pboundPair = std::make_pair(rlist.findNearestRef(prev_phrase->rnode)->val, exp_phrase->content.front()); // Add new pbound pair between prev phrase + new explicit phrase
+                        pbound_pairs[pboundPair].push_back(prev_phrase);
+                        pbound_it_map[prev_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                        auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                        update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+                    }
                 }
 
                 // Indicates whether a non-explicit phrase got deleted.
                 bool deleteCurr = false;
                 // First remove the offending entry from the tree
-                //spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
                 auto update_interval_start = std::chrono::high_resolution_clock::now();
                 phrase_tree.remove({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
                 auto update_interval_end = std::chrono::high_resolution_clock::now();
@@ -1223,33 +1794,125 @@ void sourceBoundaries(int left_elem, int right_elem)
                 curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
                 curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode);
 
+                // Always delete from start hash
+                auto update_bound_hash_start = std::chrono::high_resolution_clock::now(); 
+                start_hash[rlist.findNearestRef(curr_phrase->lnode)->val].erase(curr_phrase);
+                // If the curr phrase is length 1 then have to delete from end hash as well
+                if (curr_phrase->lnode == curr_phrase->rnode){
+                    end_hash[rlist.findNearestRef(curr_phrase->rnode)->val].erase(curr_phrase);
+                    next_phrase = curr_phrase->next;
+                    if (next_phrase != nullptr){
+                        auto pbound_it = pbound_it_map[curr_phrase];
+                        if (!next_phrase->exp){
+                            pboundPair = std::make_pair(curr_phrase->rnode->val, rlist.findNearestRef(next_phrase->lnode)->val);
+                            pbound_pairs[pboundPair].erase(pbound_it);
+                        }
+                        else{
+                            pboundPair = std::make_pair(curr_phrase->rnode->val, next_phrase->content.front());
+                            pbound_pairs[pboundPair].erase(pbound_it);
+                        }
+                    }
+                }
+                auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+
                 // Update the information of the current phrase (left node pointer & existence).
                 curr_phrase->lnode = rlist.findForwardRef(curr_phrase->lnode);                    
                 // If non-explicit phrase is empty we delete it
                 if (curr_phrase->lnode == nullptr || curr_phrase->lnode->pos > curr_phrase->rnode->pos){ 
                     deleteCurr = true;
-                    curr_phrase = plist.remove(curr_phrase); // Removes the current phrase and sets the curr phrase to be the previous phrase
+                    next_phrase = curr_phrase->next;
+                    exp_phrase = curr_phrase->prev;
+                    plist.remove(curr_phrase); // Removes the current phrase and sets the curr phrase to be the previous phrase
+                    it++; // Also update iterator since it will become invalid once the phrase is deleted.
                 }
 
-                // Update the tree with the new entry
+                // Current phrase is not deleted
                 if (!deleteCurr){
-                    //spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                    spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
                     update_interval_start = std::chrono::high_resolution_clock::now();
                     phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
                     update_interval_end = std::chrono::high_resolution_clock::now();
                     update_interval_time += update_interval_end - update_interval_start;
+                    
+                    update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                    start_hash[curr_phrase->lnode->val].insert(curr_phrase); // Update the start hash with new start value
+                    exp_phrase = curr_phrase->prev;
+                    pboundPair = std::make_pair(exp_phrase->content.back(), curr_phrase->lnode->val);
+                    pbound_pairs[pboundPair].push_back(exp_phrase);
+                    pbound_it_map[exp_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                    update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                    update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
                 }
-
+                // Current phrase is deleted
+                else{
+                    update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                    if (next_phrase != nullptr)
+                    {
+                        if (!next_phrase->exp){
+                            pboundPair = std::make_pair(exp_phrase->content.back(), rlist.findNearestRef(next_phrase->lnode)->val);
+                            pbound_pairs[pboundPair].push_back(exp_phrase);
+                            pbound_it_map[exp_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                        }
+                        else{
+                            pboundPair = std::make_pair(exp_phrase->content.back(), next_phrase->content.front());
+                            pbound_pairs[pboundPair].push_back(exp_phrase);
+                            pbound_it_map[exp_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                            // If next phrase is explicit that means that two consecutive exp phrases exist so merge
+                            mergeConsecutiveExpPhrases(exp_phrase, next_phrase);
+                        }
+                    }
+                    update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                    update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+                }
                 continue;
             }
-            
+            it++;
+        }
+        else{
+            spdlog::error("There should not be explicit phrase stored in the start set");
+        }
+    }
+    
+    // Iterate through the phrases in the ends set
+    std::unordered_set<PhraseNode*> ends = end_hash[left_elem];
+    it = ends.begin();
+    while (it != ends.end())
+    {
+        PhraseNode* curr_phrase = *it;
+        // Check if the current phrase is explicit or not
+        if (!(curr_phrase->exp))
+        {
             // Check if the current phrase with its rightmost elem can form bi-gram with right elem on reference
-            leftElem = rlist.findNearestRef(curr_phrase->rnode);
-            rightElem = rlist.findForwardRef(leftElem);
-            
+            RefNode* leftElem = rlist.findNearestRef(curr_phrase->rnode);
+            RefNode* rightElem = rlist.findForwardRef(leftElem);
+
+            // Nice variable to have
+            std::pair<int,int> pboundPair;
+        
             // If the bi-gram can be formed then make the rightmost element of the current phrase an explicit phrase of its own
             if (leftElem != nullptr && rightElem != nullptr && leftElem->val == left_elem && rightElem->val == right_elem){
-                PhraseNode* next_phrase = curr_phrase->next;                    
+                PhraseNode* next_phrase = curr_phrase->next;
+                PhraseNode* prev_phrase = nullptr;
+                PhraseNode* exp_phrase = nullptr; 
+                
+                // Always have to delete pbound entry between current phrase + next phrase
+                if (next_phrase != nullptr){
+                    auto update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                    if (!next_phrase->exp){
+                        pboundPair = std::make_pair(curr_phrase->rnode->val, rlist.findNearestRef(next_phrase->lnode)->val);
+                        auto pbound_it = pbound_it_map[curr_phrase];
+                        pbound_pairs[pboundPair].erase(pbound_it);
+                    }
+                    else{
+                        pboundPair = std::make_pair(curr_phrase->rnode->val, next_phrase->content.front());
+                        auto pbound_it = pbound_it_map[curr_phrase];
+                        pbound_pairs[pboundPair].erase(pbound_it);
+                    }
+                    auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                    update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+                }
+
                 // If the next phrase is explicit, we can add directly to it.
                 if (next_phrase != nullptr && next_phrase->exp){
                     auto r = next_phrase->content.begin();
@@ -1269,14 +1932,24 @@ void sourceBoundaries(int left_elem, int right_elem)
                         plist.push_back(content);
                     }
                     else{
-                        plist.insert(next_phrase, content);
+                        plist.insert(next_phrase, content); 
+                        // Update the hash table if only the old next phrase is not nullptr
+                        if (next_phrase != nullptr){
+                            auto update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                            exp_phrase = curr_phrase->next;
+                            pboundPair = std::make_pair(exp_phrase->content.back(),rlist.findNearestRef(next_phrase->lnode)->val); // Add new pbound pair between new explicit phrase + next phrase
+                            pbound_pairs[pboundPair].push_back(exp_phrase);
+                            pbound_it_map[exp_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                            auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                            update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+                        }
                     }
                 }
 
                 // Indicates whether a non-explicit phrase got deleted.
                 bool deleteCurr = false;
                 // First remove the offending entry from the tree
-                //spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
                 auto update_interval_start = std::chrono::high_resolution_clock::now();
                 phrase_tree.remove({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
                 auto update_interval_end = std::chrono::high_resolution_clock::now();
@@ -1286,66 +1959,93 @@ void sourceBoundaries(int left_elem, int right_elem)
                 curr_phrase->lnode = rlist.findNearestRef(curr_phrase->lnode);
                 curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode);
 
+                // Always delete from end hash
+                auto update_bound_hash_start = std::chrono::high_resolution_clock::now(); 
+                end_hash[rlist.findNearestRef(curr_phrase->rnode)->val].erase(curr_phrase);
+                // If the curr phrase is length 1 then have to delete from start hash as well
+                if (curr_phrase->lnode == curr_phrase->rnode){
+                    start_hash[rlist.findNearestRef(curr_phrase->lnode)->val].erase(curr_phrase);
+                    prev_phrase = curr_phrase->prev;
+                    if (prev_phrase != nullptr){
+                        auto pbound_it = pbound_it_map[prev_phrase];
+                        if (!prev_phrase->exp){
+                            pboundPair = std::make_pair(rlist.findNearestRef(prev_phrase->rnode)->val, curr_phrase->lnode->val);
+                            pbound_pairs[pboundPair].erase(pbound_it);
+                        }
+                        else{
+                            pboundPair = std::make_pair(prev_phrase->content.back(), curr_phrase->lnode->val);
+                            pbound_pairs[pboundPair].erase(pbound_it);
+                        }
+                    }
+                }
+                auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+
                 // Update the information of the current phrase (right node pointer & existence).
                 curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode->prev);                       
                 // If non-explicit phrase is empty we delete it
                 if (curr_phrase->rnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){
                     deleteCurr = true; 
+                    prev_phrase = curr_phrase->prev;
+                    exp_phrase = curr_phrase->next;
                     curr_phrase = plist.remove(curr_phrase); // Removes the current phrase and sets the curr phrase to be the previous phrase
+                    it++; // Also update iterator since it will be unvalid once the phrase is deleted 
                 }
 
-                // Update the tree with the new entry
+                // Curr phrase is not deleted
                 if (!deleteCurr){
-                    //spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
+                    spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode->pos, curr_phrase->rnode->pos);
                     update_interval_start = std::chrono::high_resolution_clock::now();
                     phrase_tree.insert({curr_phrase->lnode->pos, curr_phrase->rnode->pos}, curr_phrase);
                     update_interval_end = std::chrono::high_resolution_clock::now();
                     update_interval_time += update_interval_end - update_interval_start;
+                    
+                    update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                    end_hash[curr_phrase->rnode->val].insert(curr_phrase); // Have to add new end val to end hash
+                    exp_phrase = curr_phrase->next;
+                    pboundPair = std::make_pair(curr_phrase->rnode->val, exp_phrase->content.front());
+                    pbound_pairs[pboundPair].push_back(curr_phrase);
+                    pbound_it_map[curr_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                    update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                    update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
                 }
-
+                // Curr phrase is deleted
+                else{
+                    update_bound_hash_start = std::chrono::high_resolution_clock::now();
+                    if (prev_phrase != nullptr)
+                    {
+                        if (!prev_phrase->exp){
+                            pboundPair = std::make_pair(rlist.findNearestRef(prev_phrase->rnode)->val, exp_phrase->content.front());
+                            pbound_pairs[pboundPair].push_back(prev_phrase);
+                            pbound_it_map[prev_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                        }
+                        else{
+                            pboundPair = std::make_pair(prev_phrase->content.back(), exp_phrase->content.front());
+                            pbound_pairs[pboundPair].push_back(prev_phrase);
+                            pbound_it_map[prev_phrase] = std::prev(pbound_pairs[pboundPair].end());
+                            // If the prev phrase is explicit that means two consecutive exp phrases exist so merge
+                            mergeConsecutiveExpPhrases(prev_phrase, exp_phrase);
+                        }
+                    }
+                    update_bound_hash_end = std::chrono::high_resolution_clock::now();
+                    update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+                }
                 continue; // If it gets to here then the next iteration will have the same curr phrase.
             }
+            it++;
         }
-        // If explicit phrase then check surrounding phrases if they are explicit and if so merge.
         else{
-            PhraseNode* prev_phrase = curr_phrase->prev;
-            // If prev phrase is also explicit merge into the prev phrase
-            if (prev_phrase != nullptr && prev_phrase->exp){
-                auto l = std::prev(prev_phrase->content.end());
-                auto r = curr_phrase->content.begin();
-                reassignExpPairs(curr_phrase, prev_phrase); // Reassigns the pairs in curr phrase to previous phrase
-                prev_phrase->content.splice(prev_phrase->content.end(), curr_phrase->content);
-                curr_phrase = plist.remove(curr_phrase); // Deletes the current phrase and sets the current phrase to be the previous phrase
-                // Add the new exp pair to exp_pairs
-                exp_pairs[{*l, *r}].insert(ExpPair(prev_phrase, l, r));
-                if (*l == *r){
-                    updateMergeExpPairs(prev_phrase, l);
-                }
-                continue;
-            }
-            PhraseNode* next_phrase = curr_phrase->next;
-            if (next_phrase != nullptr && next_phrase->exp){
-                auto l = std::prev(curr_phrase->content.end());
-                auto r = next_phrase->content.begin();
-                reassignExpPairs(next_phrase, curr_phrase); // Reassigns the pairs in next phrase to current phrase
-                curr_phrase->content.splice(curr_phrase->content.end(), next_phrase->content);
-                plist.remove(next_phrase); // Deletes the next phrase
-                // Add the new exp pair to exp_pairs
-                exp_pairs[{*l, *r}].insert(ExpPair(curr_phrase, l, r));
-                if (*l == *r){
-                    updateMergeExpPairs(curr_phrase, l);
-                }
-                continue; // If it gets to here then the next iteration will have the same curr phrase.
-            }
+            spdlog::error("There should not be explicit phrase stored in the ends set");
         }
-        curr_phrase = curr_phrase->next;
     }
+
     // Debug
-    // if (verbosity == 2){
-    //     spdlog::trace("Phrase list after source boundary condition.");
-    //     printPhraseList();
-    // }
+    if (verbosity == 2){
+        spdlog::trace("Phrase list after source boundary condition.");
+        printPhraseList();
+    }
 }
+
 
 /**
  * @brief Decrease the frequency of a pair in the heap.
@@ -1357,9 +2057,9 @@ void sourceBoundaries(int left_elem, int right_elem)
  */
 void decreaseFrequency(int left, int right)
 {
-    // if (verbosity == 2){
-    //     spdlog::trace("Decrease frequency: ({},{})", printSymbol(left), printSymbol(right));
-    // }
+    if (verbosity == 2){
+        spdlog::trace("Decrease frequency: ({},{})", printSymbol(left), printSymbol(right));
+    }
     Tpair new_pair;
     new_pair.left = left;
     new_pair.right = right;
@@ -1379,9 +2079,9 @@ void decreaseFrequency(int left, int right)
  */
 void increaseFrequency(int left, int right)
 {
-    // if (verbosity == 2){
-    //     spdlog::trace("Increase frequency: ({},{})", printSymbol(left), printSymbol(right));
-    // }
+    if (verbosity == 2){
+        spdlog::trace("Increase frequency: ({},{})", printSymbol(left), printSymbol(right));
+    }
     Tpair new_pair;
     new_pair.left = left;
     new_pair.right = right;
@@ -1399,11 +2099,9 @@ void increaseFrequency(int left, int right)
  * 
  * RePair replaces the most occuring bi-gram with a new non-terminal symbol (n).
  * Before we do replacement, we have to check and correct the phrase and source boundary conditions.
- * If there is an explicit, we have to do normal pair by pair checking.
- * Non-explicit phrases, we can handle by looking at their ranges.
- * We also have to keep track of the frequency as we do the replacement.
- * 
- * Our goal is to handle the non-explicit phrases in time O(|phrases|). 
+ * For explicit phrase, we store all unique pairs in the explicit phrases in a hash table which gives us O(1) access to all the occurences of max pair.
+ * For non-explicit phrases, we query an interval tree to give us all the phrases that span the range of max pair in the reference so we only look at necessary phrases.
+ * We keep track of the frequency as we do the replacement.
  * 
  * @param [in] R [std::ofstream&] The file where we will write the rules.
  * @param [in] C [std::ofstream&] The file where we will write the compressed text.
@@ -1516,7 +2214,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                     int lRange = rlist.findNearestRef(phrase_results[i]->lnode)->pos;
                     int rRange = rlist.findNearestRef(phrase_results[i]->rnode)->pos;
 
-                    // If range fully contained within range then we can do the decrease and increase frequencies
+                    // If range fully contained within the edges
                     if (lRange != lref->pos && rRange != rref->pos)
                     {
                         leftleftElem = rlist.findNearestRef(lref->prev)->val;
@@ -1530,10 +2228,19 @@ void repair(std::ofstream& R, std::ofstream& C)
                     // If range touches the edges
                     else if (lRange == lref->pos && rRange == rref->pos)
                     {
+                        // First update the hash table
+                        start_hash[nexp_phrase->lnode->val].erase(nexp_phrase);
+                        start_hash[n].insert(nexp_phrase);
+                        // Then update the heap
                         if (nexp_phrase->prev != nullptr && nexp_phrase->prev->exp){
                             leftleftElem = nexp_phrase->prev->content.back();
                             decreaseFrequency(leftleftElem, leftElem);
                             increaseFrequency(leftleftElem, n);
+                            // Update the phrase boundary hash tables
+                            auto pbound_it = pbound_it_map[nexp_phrase->prev];
+                            pbound_pairs[{leftleftElem, leftElem}].erase(pbound_it);
+                            pbound_pairs[{leftleftElem, n}].push_back(nexp_phrase->prev);
+                            pbound_it_map[nexp_phrase->prev] = std::prev(pbound_pairs[{leftleftElem, n}].end());
                         } 
                         else if (nexp_phrase->prev != nullptr && !nexp_phrase->prev->exp) {
                             if (nexp_phrase->prev->rtmp == -1)
@@ -1542,12 +2249,26 @@ void repair(std::ofstream& R, std::ofstream& C)
                                 leftleftElem = nexp_phrase->prev->rtmp;
                             decreaseFrequency(leftleftElem, leftElem);
                             increaseFrequency(leftleftElem, n);
+                            // Update the phrase boundary hash tables
+                            auto pbound_it = pbound_it_map[nexp_phrase->prev];
+                            pbound_pairs[{leftleftElem, leftElem}].erase(pbound_it);
+                            pbound_pairs[{leftleftElem, n}].push_back(nexp_phrase->prev);
+                            pbound_it_map[nexp_phrase->prev] = std::prev(pbound_pairs[{leftleftElem, n}].end());
                         }
                         nexp_phrase->ltmp = n;
+                        // First update the hash table
+                        end_hash[nexp_phrase->rnode->val].erase(nexp_phrase);
+                        end_hash[n].insert(nexp_phrase);
+                        // Then update the heap
                         if (nexp_phrase->next != nullptr && nexp_phrase->next->exp){
                             rightrightElem = nexp_phrase->next->content.front();
                             decreaseFrequency(rightElem, rightrightElem);
                             increaseFrequency(n, rightrightElem);
+                            // Update the phrase boundary hash tables
+                            auto pbound_it = pbound_it_map[nexp_phrase];
+                            pbound_pairs[{rightElem, rightrightElem}].erase(pbound_it);
+                            pbound_pairs[{n, rightrightElem}].push_back(nexp_phrase);
+                            pbound_it_map[nexp_phrase] = std::prev( pbound_pairs[{n, rightrightElem}].end());
                         } 
                         else if (nexp_phrase->next != nullptr && !nexp_phrase->next->exp) {
                             if (nexp_phrase->next->ltmp == -1)
@@ -1556,16 +2277,30 @@ void repair(std::ofstream& R, std::ofstream& C)
                                 rightrightElem = nexp_phrase->next->ltmp;
                             decreaseFrequency(rightElem, rightrightElem);
                             increaseFrequency(n, rightrightElem);
+                            // Update the phrase boundary hash tables
+                            auto pbound_it = pbound_it_map[nexp_phrase];
+                            pbound_pairs[{rightElem, rightrightElem}].erase(pbound_it);
+                            pbound_pairs[{n, rightrightElem}].push_back(nexp_phrase);
+                            pbound_it_map[nexp_phrase] = std::prev( pbound_pairs[{n, rightrightElem}].end());
                         }
                         nexp_phrase->rtmp = n;
                     }
-                    // If range touches left edge, we can only decrease the left pair at the moment.
+                    // If range touches left edge
                     else if (lRange == lref->pos && rRange != rref->pos)
                     {
+                        // First update the hash table
+                        start_hash[nexp_phrase->lnode->val].erase(nexp_phrase);
+                        start_hash[n].insert(nexp_phrase);
+                        // Then update the heap
                         if (nexp_phrase->prev != nullptr && nexp_phrase->prev->exp){
                             leftleftElem = nexp_phrase->prev->content.back();
                             decreaseFrequency(leftleftElem, leftElem);
                             increaseFrequency(leftleftElem, n);
+                            // Update the phrase boundary hash tables
+                            auto pbound_it = pbound_it_map[nexp_phrase->prev];
+                            pbound_pairs[{leftleftElem, leftElem}].erase(pbound_it);
+                            pbound_pairs[{leftleftElem, n}].push_back(nexp_phrase->prev);
+                            pbound_it_map[nexp_phrase->prev] = std::prev(pbound_pairs[{leftleftElem, n}].end());
                         } 
                         else if (nexp_phrase->prev != nullptr && !nexp_phrase->prev->exp) {
                             if (nexp_phrase->prev->rtmp == -1)
@@ -1575,6 +2310,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                             nexp_phrase->ltmp = n;
                             decreaseFrequency(leftleftElem, leftElem);
                             increaseFrequency(leftleftElem, n);
+                            // Update the phrase boundary hash tables
+                            auto pbound_it = pbound_it_map[nexp_phrase->prev];
+                            pbound_pairs[{leftleftElem, leftElem}].erase(pbound_it);
+                            pbound_pairs[{leftleftElem, n}].push_back(nexp_phrase->prev);
+                            pbound_it_map[nexp_phrase->prev] = std::prev(pbound_pairs[{leftleftElem, n}].end());
                         }
 
                         rightrightElem = rlist.findForwardRef(rref)->val;
@@ -1588,10 +2328,19 @@ void repair(std::ofstream& R, std::ofstream& C)
                         decreaseFrequency(leftleftElem, leftElem);
                         increaseFrequency(leftleftElem, n);
 
+                        // First update the hash table
+                        end_hash[nexp_phrase->rnode->val].erase(nexp_phrase);
+                        end_hash[n].insert(nexp_phrase);
+                        // Then update the heap
                         if (nexp_phrase->next != nullptr && nexp_phrase->next->exp){
                             rightrightElem = nexp_phrase->next->content.front();
                             decreaseFrequency(rightElem, rightrightElem);
                             increaseFrequency(n, rightrightElem);
+                            // Update the phrase boundary hash tables
+                            auto pbound_it = pbound_it_map[nexp_phrase];
+                            pbound_pairs[{rightElem, rightrightElem}].erase(pbound_it);
+                            pbound_pairs[{n, rightrightElem}].push_back(nexp_phrase);
+                            pbound_it_map[nexp_phrase] = std::prev(pbound_pairs[{n, rightrightElem}].end());
                         } 
                         else if (nexp_phrase->next != nullptr && !nexp_phrase->next->exp) {
                             if (nexp_phrase->next->ltmp == -1)
@@ -1601,6 +2350,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                             nexp_phrase->rtmp = n;
                             decreaseFrequency(rightElem, rightrightElem);
                             increaseFrequency(n, rightrightElem);
+                            // Update the phrase boundary hash tables
+                            auto pbound_it = pbound_it_map[nexp_phrase];
+                            pbound_pairs[{rightElem, rightrightElem}].erase(pbound_it);
+                            pbound_pairs[{n, rightrightElem}].push_back(nexp_phrase);
+                            pbound_it_map[nexp_phrase] = std::prev(pbound_pairs[{n, rightrightElem}].end());
                         }
                     }
                     else{
@@ -1626,6 +2380,21 @@ void repair(std::ofstream& R, std::ofstream& C)
                 hash_range_time += hash_range_end - hash_range_start;
                 // Replace the pair in the reference.
                 rlist.replacePair(n, lref, rref);
+                // Update the tree (Phrase can never be deleted at this step)
+                for (int i = 0; i < phrase_results.size(); i++){
+                    PhraseNode* nexp_phrase = phrase_results[i];
+                    nexp_phrase->ltmp = -1;
+                    nexp_phrase->rtmp = -1;
+                    if (nexp_phrase->lnode->deleted || nexp_phrase->rnode->deleted){
+                        auto update_interval_start = std::chrono::high_resolution_clock::now();
+                        phrase_tree.remove({nexp_phrase->lnode->pos, nexp_phrase->rnode->pos}, nexp_phrase);
+                        nexp_phrase->lnode = rlist.findNearestRef(nexp_phrase->lnode);
+                        nexp_phrase->rnode = rlist.findNearestRef(nexp_phrase->rnode);
+                        phrase_tree.insert({nexp_phrase->lnode->pos, nexp_phrase->rnode->pos}, nexp_phrase);
+                        auto update_interval_end = std::chrono::high_resolution_clock::now();
+                        update_interval_time += update_interval_end - update_interval_start;
+                    }
+                }
             }
             auto hash_range_start = std::chrono::high_resolution_clock::now();
             hash_ranges.erase(max_pair); // Delete the max pair in the hash table since we have done all the replacements in the nexp phrases.
@@ -1702,6 +2471,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                             PhraseNode* prev_phrase = curr_phrase->prev;
                             if (prev_phrase->exp)
                             {
+                                // Update the phrase boundary hash tables
+                                auto pbound_it = pbound_it_map[prev_phrase];
+                                pbound_pairs[{prev_phrase->content.back(), *leftIt}].erase(pbound_it);
+                                pbound_pairs[{prev_phrase->content.back(), n}].push_back(prev_phrase);
+                                pbound_it_map[prev_phrase] = std::prev(pbound_pairs[{prev_phrase->content.back(), n}].end());
                                 // Decrease frequency of left pair effected by merge.
                                 decreaseFrequency(prev_phrase->content.back(), *leftIt);
                                 // Increase frequency of new pair.
@@ -1710,6 +2484,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                             else
                             {
                                 int leftleftElem = rlist.findNearestRef(prev_phrase->rnode)->val;
+                                // Update the phrase boundary hash tables
+                                auto pbound_it = pbound_it_map[prev_phrase];
+                                pbound_pairs[{leftleftElem, *leftIt}].erase(pbound_it);
+                                pbound_pairs[{leftleftElem, n}].push_back(prev_phrase);
+                                pbound_it_map[prev_phrase] = std::prev(pbound_pairs[{leftleftElem, n}].end());
                                 // Decrease frequency of left pair effected by merge.
                                 decreaseFrequency(leftleftElem, *leftIt);
                                 // Increase frequency of new pair.
@@ -1722,6 +2501,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                             PhraseNode* next_phrase = curr_phrase->next;
                             if (next_phrase->exp)
                             {
+                                // Update the phrase boundary hash tables
+                                auto pbound_it = pbound_it_map[curr_phrase];
+                                pbound_pairs[{*rightIt, next_phrase->content.front()}].erase(pbound_it);
+                                pbound_pairs[{n, next_phrase->content.front()}].push_back(curr_phrase);
+                                pbound_it_map[curr_phrase] = std::prev(pbound_pairs[{n, next_phrase->content.front()}].end());
                                 // Decrease frequency of right pair effected by merge.
                                 decreaseFrequency(*rightIt, next_phrase->content.front());
                                 // Increase frequency of new pair
@@ -1729,6 +2513,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                             }
                             else{
                                 int rightrightElem = rlist.findNearestRef(next_phrase->lnode)->val;
+                                // Update the phrase boundary hash tables
+                                auto pbound_it = pbound_it_map[curr_phrase];
+                                pbound_pairs[{*rightIt, rightrightElem}].erase(pbound_it);
+                                pbound_pairs[{n, rightrightElem}].push_back(curr_phrase);
+                                pbound_it_map[curr_phrase] = std::prev(pbound_pairs[{n, rightrightElem}].end());
                                 // Decrease frequency of right pair effected by merge.
                                 decreaseFrequency(*rightIt, rightrightElem);
                                 // Increase frequency of new pair
@@ -1745,6 +2534,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                             PhraseNode* prev_phrase = curr_phrase->prev;
                             if (prev_phrase->exp)
                             {
+                                // Update the phrase boundary hash tables
+                                auto pbound_it = pbound_it_map[prev_phrase];
+                                pbound_pairs[{prev_phrase->content.back(), *leftIt}].erase(pbound_it);
+                                pbound_pairs[{prev_phrase->content.back(), n}].push_back(prev_phrase);
+                                pbound_it_map[prev_phrase] = std::prev(pbound_pairs[{prev_phrase->content.back(), n}].end());
                                 // Decrease frequency of left pair effected by merge.
                                 decreaseFrequency(prev_phrase->content.back(), *leftIt);
                                 // Increase frequency of new pair.
@@ -1753,6 +2547,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                             else
                             {
                                 int leftleftElem = rlist.findNearestRef(prev_phrase->rnode)->val;
+                                // Update the phrase boundary hash tables
+                                auto pbound_it = pbound_it_map[prev_phrase];
+                                pbound_pairs[{leftleftElem, *leftIt}].erase(pbound_it);
+                                pbound_pairs[{leftleftElem, n}].push_back(prev_phrase);
+                                pbound_it_map[prev_phrase] = std::prev(pbound_pairs[{leftleftElem, n}].end());
                                 // Decrease frequency of left pair effected by merge.
                                 decreaseFrequency(leftleftElem, *(leftIt));
                                 // Increase frequency of new pair.
@@ -1796,6 +2595,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                             PhraseNode* next_phrase = curr_phrase->next;
                             if (next_phrase->exp)
                             {
+                                // Update the phrase boundary hash tables
+                                auto pbound_it = pbound_it_map[curr_phrase];
+                                pbound_pairs[{*rightIt, next_phrase->content.front()}].erase(pbound_it);
+                                pbound_pairs[{n, next_phrase->content.front()}].push_back(curr_phrase);
+                                pbound_it_map[curr_phrase] = std::prev(pbound_pairs[{n, next_phrase->content.front()}].end());
                                 // Decrease frequency of right pair effected by merge.
                                 decreaseFrequency(*rightIt, next_phrase->content.front());
                                 // Increase frequency of new pair
@@ -1804,6 +2608,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                             else
                             {
                                 int rightrightElem = rlist.findNearestRef(next_phrase->lnode)->val;
+                                // Update the phrase boundary hash tables
+                                auto pbound_it = pbound_it_map[curr_phrase];
+                                pbound_pairs[{*rightIt, rightrightElem}].erase(pbound_it);
+                                pbound_pairs[{n, rightrightElem}].push_back(curr_phrase);
+                                pbound_it_map[curr_phrase] = std::prev(pbound_pairs[{n, rightrightElem}].end());
                                 // Decrease frequency of right pair effected by merge.
                                 decreaseFrequency(*rightIt, rightrightElem);
                                 // Increase frequency of new pair
@@ -1871,9 +2680,13 @@ void repair(std::ofstream& R, std::ofstream& C)
             printRef();
             printPhraseList();
             //printAllRecords();
+            //checkPhraseBoundaries();
+            //checkSourceBoundaries();
             checkExpPairs();
             checkHeap();
             //phrase_tree.printTree();
+            phrase_tree.isValidRB();
+            phrase_tree.isValidIT();
             spdlog::trace("*********************************************");
         }
     }
@@ -2024,7 +2837,9 @@ int main(int argc, char *argv[])
     spdlog::debug("Total Update Interval Tree Time (s): {:.6f}", std::chrono::duration<double>(update_interval_time).count());
     spdlog::debug("Total Non-explicit Phrase Time (s): {:.6f}", std::chrono::duration<double>(nonexplicit_phrase_time).count());
     spdlog::debug("Total Explicit Phrase Time (s): {:.6f}", std::chrono::duration<double>(explicit_phrase_time).count());
+    spdlog::debug("Total Merge Explicit Phrase Time (s): {:.6f}", std::chrono::duration<double>(merge_explicit_phrase_time).count());
     spdlog::debug("Total Hash Range Update Time (s): {:.6f}", std::chrono::duration<double>(hash_range_time).count());
+    spdlog::debug("Total Boundary Hash Range Update Time (s): {:.6f}", std::chrono::duration<double>(update_bound_hash_time).count());
     total_time = total_time_end - total_time_start;
     spdlog::debug("*********************************************");
     spdlog::debug("Total Time (s): {:.6f}", std::chrono::duration<double>(total_time).count());
