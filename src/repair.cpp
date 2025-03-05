@@ -880,7 +880,7 @@ void createMaxHeap(std::ifstream& pfile)
 
 void populatePhrases(std::ifstream& pfile, int min_threshold)
 {
-    uint64_t num_pairs, pos, len;
+    int num_pairs, pos, len;
     PhraseNode* prevPhrase;
     PhraseNode* nextPhrase;
 
@@ -888,13 +888,13 @@ void populatePhrases(std::ifstream& pfile, int min_threshold)
     double M = 0;
     double M_old = 0;
     double S = 0;
-    uint64_t k = 0;
+    int k = 0;
 
     // First uint64_t bytes tell how many (pos,len) pairs are stored in the parse file
     pfile.read(reinterpret_cast<char*>(&num_pairs), sizeof(uint64_t));
 
     // Update the heap with the frequencies of all pairs
-    for (uint64_t i = 0; i < 2 * num_pairs; i++)
+    for (int i = 0; i < 2 * num_pairs; i++)
     {
         if (i % 2 == 0){
             pfile.read(reinterpret_cast<char*>(&pos), sizeof(uint64_t));
@@ -907,19 +907,21 @@ void populatePhrases(std::ifstream& pfile, int min_threshold)
                 std::list<int> content;
                 // Have to create the empty explicit phrase first because we need the pointer to the phrase when adding to exp_pairs
                 PhraseNode* exp_phrase = plist.push_back(content);
-                std::list<int>::iterator pit = exp_phrase->content.end(); // Set the prev iterator to the 1 past the end at the start
-                for (int j = pos; j < pos+len; j++){
-                    exp_phrase->content.push_back(rarray[j]->val);
-                    std::list<int>::iterator it = std::prev(exp_phrase->content.end());
+                std::list<int>::iterator nit = exp_phrase->content.end(); // Set the prev iterator to the 1 past the end at the start
+                // Going to process the phrase in reverse but insert to front of the list to preserve the phrase sequence
+                // This will allow updateExpPairs to be more efficient since we are inserting from left rather than right
+                for (int q = (pos + len - 1); q >= pos; q--){
+                    exp_phrase->content.push_front(rarray[q]->val);
+                    std::list<int>::iterator pit = exp_phrase->content.begin();
                     // If length of phrase >1 then add the pairs to exp pairs
-                    if (pit != exp_phrase->content.end()){
-                        exp_pairs[{*pit, *it}].insert(ExpPair(exp_phrase, pit, it));
+                    if (nit != exp_phrase->content.end()){
+                        exp_pairs[{*pit, *nit}].insert(ExpPair(exp_phrase, pit, nit));
                         // If same character then might have to update exp pairs
-                        if (*pit == *it){
-                            updateExpPairs(exp_phrase, it, false);
+                        if (*pit == *nit){
+                            updateExpPairs(exp_phrase, pit, true);
                         }
                     }
-                    pit = it;
+                    nit = pit;
                 }
             }
             else{
