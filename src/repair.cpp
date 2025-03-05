@@ -914,6 +914,10 @@ void populatePhrases(std::ifstream& pfile, int min_threshold)
                     // If length of phrase >1 then add the pairs to exp pairs
                     if (pit != exp_phrase->content.end()){
                         exp_pairs[{*pit, *it}].insert(ExpPair(exp_phrase, pit, it));
+                        // If same character then might have to update exp pairs
+                        if (*pit == *it){
+                            updateExpPairs(exp_phrase, it, false);
+                        }
                     }
                     pit = it;
                 }
