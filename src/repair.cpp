@@ -905,10 +905,18 @@ void populatePhrases(std::ifstream& pfile, int min_threshold)
             // If the size of the phrase is less than the min threshold store as explicit else non-explicit
             if (min_threshold > -1 && len < min_threshold){
                 std::list<int> content;
+                // Have to create the empty explicit phrase first because we need the pointer to the phrase when adding to exp_pairs
+                PhraseNode* exp_phrase = plist.push_back(content);
+                std::list<int>::iterator pit = exp_phrase->content.end(); // Set the prev iterator to the 1 past the end at the start
                 for (int j = pos; j < pos+len; j++){
-                    content.push_back(rarray[j]->val);
+                    exp_phrase->content.push_back(rarray[j]->val);
+                    std::list<int>::iterator it = std::prev(exp_phrase->content.end());
+                    // If length of phrase >1 then add the pairs to exp pairs
+                    if (pit != exp_phrase->content.end()){
+                        exp_pairs[{*pit, *it}].insert(ExpPair(exp_phrase, pit, it));
+                    }
+                    pit = it;
                 }
-                plist.push_back(content);
             }
             else{
                 plist.push_back(rarray[pos], rarray[pos+len-1]);
