@@ -39,7 +39,7 @@ def runRLZ(args):
 
 def runRePair(args):
     command = ""
-    command += repair_exe + " " + "-r " + args.ref_file + " " + "-p " + args.seq_file + ".rlz" + " " + "-v " + str(args.verbosity)
+    command += repair_exe + " " + "-r " + args.ref_file + " " + "-p " + args.seq_file + ".rlz" + " " + "-m " + str(args.min) + " " + "-v " + str(args.verbosity)
     
     execute_command(args, command)
 
@@ -49,6 +49,11 @@ def runDesPair(args):
 
     execute_command(args, command)
 
+def non_negative_or_minus_one(value):
+    ivalue = int(value)
+    if ivalue < -1:
+        raise argparse.ArgumentTypeError(f"{value} is invalid. Must be a non-negative integer.")
+    return ivalue
 
 def main():
     parser = argparse.ArgumentParser(description=Description, formatter_class=argparse.RawTextHelpFormatter)
@@ -57,6 +62,7 @@ def main():
     compression_group.add_argument('-r', '--ref', help = "The reference file to be used for compression.", type = str, dest="ref_file")
     compression_group.add_argument('-s', '--seq', help = "The sequence file to compress.", type = str, dest="seq_file")
     #compression_group.add_argument('-b', '--bit', help = "Do the RLZ compression at bit level", action='store_true')
+    compression_group.add_argument('-m', '--min', help = "The minimum phrase length threshold for an RLZ phrase to be stored as a non-explicit phrase.", type = non_negative_or_minus_one, default = -1)
     compression_group.add_argument('-t', '--threads', help = "Number of threads for RLZ section (default 1).", type = int, default = 1)
     compression_group.add_argument('-v', '--verbosity', help='Set verbosity level (0 = none, 1 = basic, 2 = detailed).', type=int, choices=[0, 1, 2], default=0)
 
