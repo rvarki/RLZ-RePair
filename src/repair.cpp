@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstdint>
+#include <cmath>
 #include <unordered_map>
 #include <unordered_set>
 #include <list>
@@ -882,6 +883,12 @@ void populatePhrases(std::ifstream& pfile)
     PhraseNode* prevPhrase;
     PhraseNode* nextPhrase;
 
+    // Welford's algorithm variables
+    double M = 0;
+    double M_old = 0;
+    double S = 0;
+    uint64_t k = 0;
+
     // First uint64_t bytes tell how many (pos,len) pairs are stored in the parse file
     pfile.read(reinterpret_cast<char*>(&num_pairs), sizeof(uint64_t));
 
@@ -912,6 +919,14 @@ void populatePhrases(std::ifstream& pfile)
             end_hash[nextPhrase->rnode->val].insert(nextPhrase);
             auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
             update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+
+            // Compute the mean and standard deviation of the phrase sizes with Welford's algorithm (https://jonisalonen.com/2013/deriving-welfords-method-for-computing-variance/)
+            if (verbosity == 1){
+                k++;
+                M_old = M;
+                M = M + ((len - M)/k);
+                S = S + (len - M) * (len - M_old);
+            }
         }
     }
 
@@ -920,6 +935,13 @@ void populatePhrases(std::ifstream& pfile)
     pfile.seekg(0, std::ios::beg);
 
     // Debug
+    if (verbosity == 1 || verbosity == 2){
+        spdlog::debug("Number of RLZ phrases at the start: {}", num_pairs);
+        spdlog::debug("Phrase size average: {:.3f} chars", M);
+        spdlog::debug("Phrase size variance: {:.3f} chars", (S/(num_pairs-1)));
+        spdlog::debug("Phrase size standard deviation: {:.3f} chars", std::sqrt((S/(num_pairs-1))));
+    }
+
     if (verbosity == 2){
         spdlog::trace("The non-explicit phrases at the start");
         printPhraseList();
