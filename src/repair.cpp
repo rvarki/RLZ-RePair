@@ -870,6 +870,8 @@ void createMaxHeap(std::ifstream& pfile)
  * A non-explicit phrase stores left and right endpoints that references the reference.
  * Range for each phrase is [left,right]
  * 
+ * TODO: At some point have to address the uint64_t that RLZ writes. Either have to change RLZ or RLZ-RePair. Not good to force uint64_t to int
+ * 
  * Also populate hash tables for phrase boundary between phrases
  * and hash tables storing the start and end char of each non-explicit phrase 
  * 
@@ -880,7 +882,7 @@ void createMaxHeap(std::ifstream& pfile)
 
 void populatePhrases(std::ifstream& pfile, int min_threshold)
 {
-    int num_pairs, pos, len;
+    int num_pairs, pos, len; // Has to be signed other wise issues will happen in inner for loop for explicit phrase if pos is 0 (iterator will become negative in for loop) 
     PhraseNode* prevPhrase;
     PhraseNode* nextPhrase;
 
