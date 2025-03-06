@@ -1,5 +1,3 @@
-include(FetchContent)
-
 cmake_minimum_required (VERSION 3.15)
 project (rlz-repair)
 
@@ -88,20 +86,14 @@ list(APPEND CMAKE_PREFIX_PATH  "${CMAKE_CURRENT_BINARY_DIR}")
 # RLZ
 find_program(RLZ rlz)
 if (NOT RLZ)
-    message(STATUS "rlz not found. Building as external content.")
-    FetchContent_Declare(
-            rlz
-            GIT_REPOSITORY "https://github.com/rvarki/RLZ.git"
-            GIT_TAG main
-    )
-    FetchContent_GetProperties(rlz)
-    if (NOT rlz_POPULATED)
-        FetchContent_Populate(rlz)
-        add_subdirectory(${rlz_SOURCE_DIR} ${rlz_BINARY_DIR})
+    message(STATUS "rlz not found. Building from submodule...")
+    # Ensure the submodule is initialized
+    if(NOT EXISTS ${THIRDPARTY_INCLUDE_DIR}/RLZ)
+        message(FATAL_ERROR "RLZ submodule is not initialized. Run 'git submodule update --init --recursive'")
     endif()
+    add_subdirectory(${THIRDPARTY_INCLUDE_DIR}/RLZ ${CMAKE_CURRENT_BINARY_DIR}/bin)
     set(RLZ ${CMAKE_CURRENT_BINARY_DIR}/bin/rlz CACHE FILEPATH "Path to rlz executable" FORCE)
 else()
-    add_subdirectory(${rlz_SOURCE_DIR} ${rlz_BINARY_DIR})
     message(STATUS "rlz found at ${RLZ}.")
 endif()
 

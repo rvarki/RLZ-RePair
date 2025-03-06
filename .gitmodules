@@ -1,3 +1,6 @@
 [submodule "thirdparty/malloc_count"]
 	path = thirdparty/malloc_count
 	url = https://github.com/bingmann/malloc_count
+[submodule "thirdparty/RLZ"]
+	path = thirdparty/RLZ
+	url = https://github.com/rvarki/RLZ
