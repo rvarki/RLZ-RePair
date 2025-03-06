@@ -18,6 +18,7 @@
 #include "repair.h"
 #include "rbintervaltree.h"
 #include "doublelinkedlist.h"
+#include "malloc_count.h"
 #include <chrono>
 
 extern "C" {

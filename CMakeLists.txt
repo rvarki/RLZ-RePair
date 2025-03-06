@@ -114,7 +114,9 @@ add_executable(repair
                ${PROJECT_SRC_DIR}/repair/records.c
                ${PROJECT_SRC_DIR}/repair/hash.c)
 
-target_include_directories(repair PUBLIC ${PROJECT_INCLUDE_DIR} ${PROJECT_INCLUDE_DIR}/repair ${THIRDPARTY_INCLUDE_DIR} ${THIRDPARTY_INCLUDE_DIR}/CLI)
+add_library(malloc_count STATIC ${THIRDPARTY_INCLUDE_DIR}/malloc_count/malloc_count.c)
+target_link_libraries(repair PRIVATE malloc_count dl)
+target_include_directories(repair PUBLIC ${PROJECT_INCLUDE_DIR} ${PROJECT_INCLUDE_DIR}/repair ${THIRDPARTY_INCLUDE_DIR} ${THIRDPARTY_INCLUDE_DIR}/CLI ${THIRDPARTY_INCLUDE_DIR}/malloc_count)
 set(REPAIR ${CMAKE_CURRENT_BINARY_DIR}/bin/repair CACHE FILEPATH "Path to the repair executable" FORCE)
 
 # Despair
