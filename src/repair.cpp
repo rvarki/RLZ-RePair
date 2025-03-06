@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstdint>
+#include <cmath>
 #include <unordered_map>
 #include <unordered_set>
 #include <list>
@@ -869,24 +870,33 @@ void createMaxHeap(std::ifstream& pfile)
  * A non-explicit phrase stores left and right endpoints that references the reference.
  * Range for each phrase is [left,right]
  * 
+ * TODO: At some point have to address the uint64_t that RLZ writes. Either have to change RLZ or RLZ-RePair. Not good to force uint64_t to int
+ * 
  * Also populate hash tables for phrase boundary between phrases
  * and hash tables storing the start and end char of each non-explicit phrase 
  * 
  * @param[in] pfile [std::ifstream&] the RLZ parse filestream
+ * @param[in] min_threshold [int] the minimum length for an RLZ phrase to be stored as a non-explicit phrase
  * @return void 
  */
 
-void populatePhrases(std::ifstream& pfile)
+void populatePhrases(std::ifstream& pfile, int min_threshold)
 {
-    uint64_t num_pairs, pos, len;
+    int num_pairs, pos, len; // Has to be signed other wise issues will happen in inner for loop for explicit phrase if pos is 0 (iterator will become negative in for loop) 
     PhraseNode* prevPhrase;
     PhraseNode* nextPhrase;
+
+    // Welford's algorithm variables
+    double M = 0;
+    double M_old = 0;
+    double S = 0;
+    int k = 0;
 
     // First uint64_t bytes tell how many (pos,len) pairs are stored in the parse file
     pfile.read(reinterpret_cast<char*>(&num_pairs), sizeof(uint64_t));
 
     // Update the heap with the frequencies of all pairs
-    for (uint64_t i = 0; i < 2 * num_pairs; i++)
+    for (int i = 0; i < 2 * num_pairs; i++)
     {
         if (i % 2 == 0){
             pfile.read(reinterpret_cast<char*>(&pos), sizeof(uint64_t));
@@ -894,24 +904,78 @@ void populatePhrases(std::ifstream& pfile)
         else
         {
             pfile.read(reinterpret_cast<char*>(&len), sizeof(uint64_t));
-            plist.push_back(rarray[pos], rarray[pos+len-1]);
+            // If the size of the phrase is less than the min threshold store as explicit else non-explicit
+            if (min_threshold > -1 && len < min_threshold){
+                std::list<int> content;
+                // Have to create the empty explicit phrase first because we need the pointer to the phrase when adding to exp_pairs
+                PhraseNode* exp_phrase = plist.push_back(content);
+                std::list<int>::iterator nit = exp_phrase->content.end(); // Set the prev iterator to the 1 past the end at the start
+                // Going to process the phrase in reverse but insert to front of the list to preserve the phrase sequence
+                // This will allow updateExpPairs to be more efficient since we are inserting from left rather than right
+                for (int q = (pos + len - 1); q >= pos; q--){
+                    exp_phrase->content.push_front(rarray[q]->val);
+                    std::list<int>::iterator pit = exp_phrase->content.begin();
+                    // If length of phrase >1 then add the pairs to exp pairs
+                    if (nit != exp_phrase->content.end()){
+                        exp_pairs[{*pit, *nit}].insert(ExpPair(exp_phrase, pit, nit));
+                        // If same character then might have to update exp pairs
+                        if (*pit == *nit){
+                            updateExpPairs(exp_phrase, pit, true);
+                        }
+                    }
+                    nit = pit;
+                }
+            }
+            else{
+                plist.push_back(rarray[pos], rarray[pos+len-1]);
+            }
             nextPhrase = plist.getTail();
             // Only start adding to the phrase boundary hash table after the first phrase is added
             if (i != 1)
             {
                 auto update_bound_hash_start = std::chrono::high_resolution_clock::now();
                 prevPhrase = plist.getTail()->prev;
-                pbound_pairs[{prevPhrase->rnode->val, nextPhrase->lnode->val}].push_back(prevPhrase);
-                pbound_it_map[prevPhrase] = std::prev(pbound_pairs[{prevPhrase->rnode->val, nextPhrase->lnode->val}].end());
+                // Since now phrase can be explicit or not have to check each combination
+                std::pair<int,int> pboundPair;
+                if (!prevPhrase->exp && !nextPhrase->exp){
+                    pboundPair = std::make_pair(prevPhrase->rnode->val, nextPhrase->lnode->val);
+                }
+                else if (!prevPhrase->exp && nextPhrase->exp){
+                    pboundPair = std::make_pair(prevPhrase->rnode->val, nextPhrase->content.front());
+                }
+                else if (prevPhrase->exp && !nextPhrase->exp){
+                    pboundPair = std::make_pair(prevPhrase->content.back(), nextPhrase->lnode->val);
+                }
+                else{
+                    pboundPair = std::make_pair(prevPhrase->content.back(), nextPhrase->content.front());
+                }
+                pbound_pairs[pboundPair].push_back(prevPhrase);
+                pbound_it_map[prevPhrase] = std::prev(pbound_pairs[pboundPair].end());
+
+                // If both the prev and next phrase are explicit then merge
+                if (prevPhrase->exp && nextPhrase->exp){
+                    mergeConsecutiveExpPhrases(prevPhrase, nextPhrase);
+                }
                 auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
                 update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
             }
             // Add the start and end character of each phrase to the source boundary hash tables
             auto update_bound_hash_start = std::chrono::high_resolution_clock::now();
-            start_hash[nextPhrase->lnode->val].insert(nextPhrase);
-            end_hash[nextPhrase->rnode->val].insert(nextPhrase);
+            // If next phrase is not explicit, update the start and end hash tables
+            if (!nextPhrase->exp){
+                start_hash[nextPhrase->lnode->val].insert(nextPhrase);
+                end_hash[nextPhrase->rnode->val].insert(nextPhrase);
+            }
             auto update_bound_hash_end = std::chrono::high_resolution_clock::now();
             update_bound_hash_time += update_bound_hash_end - update_bound_hash_start;
+
+            // Compute the mean and standard deviation of the phrase sizes with Welford's algorithm (https://jonisalonen.com/2013/deriving-welfords-method-for-computing-variance/)
+            if (verbosity == 1 || verbosity == 2){
+                k++;
+                M_old = M;
+                M = M + ((len - M)/k);
+                S = S + (len - M) * (len - M_old);
+            }
         }
     }
 
@@ -920,6 +984,13 @@ void populatePhrases(std::ifstream& pfile)
     pfile.seekg(0, std::ios::beg);
 
     // Debug
+    if (verbosity == 1 || verbosity == 2){
+        spdlog::debug("Number of RLZ phrases at the start: {}", num_pairs);
+        spdlog::debug("Phrase size average: {:.3f} chars", M);
+        spdlog::debug("Phrase size variance: {:.3f} chars", (S/(num_pairs-1)));
+        spdlog::debug("Phrase size standard deviation: {:.3f} chars", std::sqrt((S/(num_pairs-1))));
+    }
+
     if (verbosity == 2){
         spdlog::trace("The non-explicit phrases at the start");
         printPhraseList();
@@ -2727,10 +2798,12 @@ int main(int argc, char *argv[])
     CLI::App app("rlz - Run RePair with the RLZ parse.\n\nImplemented by Rahul Varki");
     std::string ref_file;
     std::string rlz_parse;
+    int min_threshold = -1;
     std::string version = "Version: 1.0.0";
 
     app.add_option("-r,--ref", ref_file, "The reference file used to create the RLZ parse")->configurable()->required();
     app.add_option("-p,--parse", rlz_parse, "The RLZ parse of the sequence file (.rlz)")->configurable()->required();
+    app.add_option("-m,--min", min_threshold, "The minimum phrase length threshold for an RLZ phrase to be stored as a non-explicit phrase.")->default_val(-1);
     app.add_option("-v,--verbosity", verbosity, "Set verbosity level (0 = none, 1 = basic, 2 = detailed)")->default_val(0);
     app.set_version_flag("--version", version);
     app.footer("Example usage:\n"
@@ -2813,7 +2886,7 @@ int main(int argc, char *argv[])
 
     // Call populatePhrases function
     auto parse_phrase_start = std::chrono::high_resolution_clock::now();
-    populatePhrases(pfile);
+    populatePhrases(pfile, min_threshold);
     auto parse_phrase_end = std::chrono::high_resolution_clock::now();
     populate_phrase_time += parse_phrase_end - parse_phrase_start;
 

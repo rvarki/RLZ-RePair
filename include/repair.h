@@ -35,7 +35,7 @@ bool checkSourceBoundaries();
 uint64_t calculateParseBytes(std::ifstream& pfile);
 void prepareRef(std::vector<unsigned char>& rtext);
 void createMaxHeap(std::ifstream& pfile);
-void populatePhrases(std::ifstream& pfile);
+void populatePhrases(std::ifstream& pfile, int min_threshold);
 void buildIntervalTree();
 void updateExpPairs(PhraseNode* p, std::list<int>::iterator it, bool leftInsert);
 void updateMergeExpPairs(PhraseNode* p, std::list<int>::iterator it);
