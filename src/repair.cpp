@@ -1578,13 +1578,31 @@ void phraseBoundaries(int left_elem, int right_elem)
                     auto r = next_phrase->content.begin();
                     next_phrase->content.push_front(left_elem);
                     auto l = next_phrase->content.begin();
-                    // Add the new exp pair to exp_pairs
-                    exp_pairs[{*l, *r}].insert(ExpPair(next_phrase, l, r));
+
+                    // Update the end of the current phrase
+                    curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode->prev);
+
+                    // If replacing the same letter pair, see how many letters at the ends of the phrases can be made explicit
+                    int same_letter_count = 0;
+                    if (left_elem == right_elem){
+                        same_letter_count = 2;
+                        while(curr_phrase->rnode != nullptr && curr_phrase->lnode->pos < curr_phrase->rnode->pos && curr_phrase->rnode->val == left_elem){
+                            same_letter_count++;
+                            curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode->prev);
+                            next_phrase->content.push_front(left_elem);
+                        }
+                    }
+                    // If did not add same letter then can add to exp_pairs directly.
+                    if (same_letter_count == 0){
+                        // Add the new exp pair to exp_pairs
+                        exp_pairs[{*l, *r}].insert(ExpPair(next_phrase, l, r));
+                    }
                     // If consecutive characters, then might have to change exp_pairs (i.e e + ee -> ee + e)
-                    if (*l == *r){
+                    else{
+                        l = next_phrase->content.begin();
                         updateExpPairs(next_phrase, l, true);
                     }
-                    curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode->prev);
+                    
                     // If the non-explicit phrase is empty we delete it.
                     if (curr_phrase->rnode == nullptr || curr_phrase->lnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){ 
                         deleteCurr = true;
@@ -1680,13 +1698,31 @@ void phraseBoundaries(int left_elem, int right_elem)
                     auto l = std::prev(curr_phrase->content.end());
                     curr_phrase->content.push_back(right_elem);
                     auto r = std::prev(curr_phrase->content.end());
-                    // Add the new exp pair to exp_pairs
-                    exp_pairs[{*l, *r}].insert(ExpPair(curr_phrase, l, r));
+
+                    // Update the start of the next phrase
+                    next_phrase->lnode = rlist.findForwardRef(next_phrase->lnode);
+
+                    // If replacing the same letter pair, see how many letters at the ends of the phrases can be made explicit
+                    int same_letter_count = 0;
+                    if (left_elem == right_elem){
+                        same_letter_count = 2;
+                        while(next_phrase->lnode != nullptr && next_phrase->lnode->pos < next_phrase->rnode->pos && next_phrase->lnode->val == right_elem){
+                            same_letter_count++;
+                            next_phrase->lnode = rlist.findForwardRef(next_phrase->lnode);
+                            curr_phrase->content.push_back(right_elem);
+                        }
+                    }
+                    // If did not add same letter then can add to exp_pairs directly.
+                    if (same_letter_count == 0){
+                        // Add the new exp pair to exp_pairs
+                        exp_pairs[{*l, *r}].insert(ExpPair(curr_phrase, l, r));
+                    }
                     // If consecutive characters, then might have to change exp_pairs (i.e e + ee -> ee + e)
-                    if (*l == *r){
+                    else{
+                        r = std::prev(curr_phrase->content.end());
                         updateExpPairs(curr_phrase, r, false);
                     }
-                    next_phrase->lnode = rlist.findForwardRef(next_phrase->lnode);
+                    
                     if (next_phrase->rnode == nullptr || next_phrase->lnode == nullptr || next_phrase->lnode->pos > next_phrase->rnode->pos){
                         deleteNext = true;
                         next_next_phrase = next_phrase->next;
