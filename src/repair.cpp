@@ -1333,15 +1333,37 @@ void phraseBoundaries(int left_elem, int right_elem)
                     // Update the pointers of the non-explicit phrases
                     curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode->prev);
                     next_phrase->lnode = rlist.findForwardRef(next_phrase->lnode);
+
+                    // If replacing the same letter pair, see how many letters at the ends of the phrases can be made explicit
+                    int same_letter_count = 0;
+                    if (left_elem == right_elem){
+                        same_letter_count = 2;
+                        while (curr_phrase->rnode != nullptr && curr_phrase->lnode->pos < curr_phrase->rnode->pos && curr_phrase->rnode->val == left_elem){
+                            same_letter_count++;
+                            curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode->prev);
+                            content.push_front(left_elem);
+                        }
+                        while (next_phrase->lnode != nullptr && next_phrase->lnode->pos < next_phrase->rnode->pos && next_phrase->lnode->val == right_elem){
+                            same_letter_count++;
+                            next_phrase->lnode = rlist.findForwardRef(next_phrase->lnode);
+                            content.push_back(right_elem);
+                        }
+                    }
                     // Insert the explicit phrase to phrase list
                     PhraseNode* exp_phrase = plist.insert(next_phrase, content);
 
-                    // Add the new exp pair to exp_pairs
-                    auto l = exp_phrase->content.begin();
-                    auto r = std::prev(exp_phrase->content.end());
-                    exp_pairs[{*l, *r}].insert(ExpPair(exp_phrase, l, r));
-                    // Only two characters guaranteed so do not have to check consecutive characters
-
+                    // Add the new exp pair(s) to exp_pairs
+                    if (same_letter_count < 3){ // If there are two or less same char letters added together then can add to exp_pairs normally.
+                        auto l = exp_phrase->content.begin();
+                        auto r = std::prev(exp_phrase->content.end());
+                        exp_pairs[{*l, *r}].insert(ExpPair(exp_phrase, l, r));
+                        // Only two characters guaranteed so do not have to check consecutive characters
+                    }
+                    else{ // If there are more than three or more same letter chars added together, then have to call updateExpPairs.
+                        auto l = exp_phrase->content.begin();
+                        updateExpPairs(exp_phrase, l, true);
+                    }
+                    
                     // If the current or next phrases are empty we delete
                     if (curr_phrase->rnode == nullptr || curr_phrase->lnode == nullptr || curr_phrase->rnode->pos < curr_phrase->lnode->pos){
                         deleteCurr = true;
