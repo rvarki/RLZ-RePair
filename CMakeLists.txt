@@ -1,9 +1,8 @@
-include(FetchContent)
-
 cmake_minimum_required (VERSION 3.15)
 project (rlz-repair)
 
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_C_FLAGS "-O3")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 SET(VERSION_MAJOR "1")
 SET(VERSION_MINOR "0")
@@ -87,35 +86,37 @@ list(APPEND CMAKE_PREFIX_PATH  "${CMAKE_CURRENT_BINARY_DIR}")
 # RLZ
 find_program(RLZ rlz)
 if (NOT RLZ)
-    message(STATUS "rlz not found. Building as external content.")
-    FetchContent_Declare(
-            rlz
-            GIT_REPOSITORY "https://github.com/rvarki/RLZ.git"
-            GIT_TAG main
-    )
-    FetchContent_GetProperties(rlz)
-    if (NOT rlz_POPULATED)
-        FetchContent_Populate(rlz)
-        add_subdirectory(${rlz_SOURCE_DIR} ${rlz_BINARY_DIR})
+    message(STATUS "rlz not found. Building from submodule...")
+    # Ensure the submodule is initialized
+    if(NOT EXISTS ${THIRDPARTY_INCLUDE_DIR}/RLZ)
+        message(FATAL_ERROR "RLZ submodule is not initialized. Run 'git submodule update --init --recursive'")
     endif()
+    add_subdirectory(${THIRDPARTY_INCLUDE_DIR}/RLZ ${CMAKE_CURRENT_BINARY_DIR}/bin)
     set(RLZ ${CMAKE_CURRENT_BINARY_DIR}/bin/rlz CACHE FILEPATH "Path to rlz executable" FORCE)
 else()
-    add_subdirectory(${rlz_SOURCE_DIR} ${rlz_BINARY_DIR})
     message(STATUS "rlz found at ${RLZ}.")
 endif()
 
 # RePair
 add_executable(repair 
-               ${PROJECT_SRC_DIR}/repair.cpp
-               ${PROJECT_SRC_DIR}/phrase.cpp  
+               ${PROJECT_SRC_DIR}/repair.cpp 
                ${PROJECT_SRC_DIR}/repair/heap.c
                ${PROJECT_SRC_DIR}/repair/array.c
                ${PROJECT_SRC_DIR}/repair/basics.c
                ${PROJECT_SRC_DIR}/repair/records.c
                ${PROJECT_SRC_DIR}/repair/hash.c)
 
-target_include_directories(repair PUBLIC ${PROJECT_INCLUDE_DIR} ${PROJECT_INCLUDE_DIR}/repair ${THIRDPARTY_INCLUDE_DIR} ${THIRDPARTY_INCLUDE_DIR}/CLI)
+add_library(malloc_count STATIC ${THIRDPARTY_INCLUDE_DIR}/malloc_count/malloc_count.c)
+target_link_libraries(repair PRIVATE malloc_count dl)
+target_include_directories(repair PUBLIC ${PROJECT_INCLUDE_DIR} ${PROJECT_INCLUDE_DIR}/repair ${THIRDPARTY_INCLUDE_DIR} ${THIRDPARTY_INCLUDE_DIR}/CLI ${THIRDPARTY_INCLUDE_DIR}/malloc_count)
 set(REPAIR ${CMAKE_CURRENT_BINARY_DIR}/bin/repair CACHE FILEPATH "Path to the repair executable" FORCE)
+
+# Despair
+add_executable(despair
+               ${PROJECT_SRC_DIR}/decompress/despair.c
+               ${PROJECT_SRC_DIR}/decompress/basics.c)
+target_include_directories(despair PUBLIC ${PROJECT_INCLUDE_DIR}/decompress)
+set(DESPAIR ${CMAKE_CURRENT_BINARY_DIR}/bin/despair CACHE FILEPATH "Path to the despair executable" FORCE)
 
 # Setting up python pipeline script
 configure_file(${CMAKE_CURRENT_LIST_DIR}/pipeline/rlz-repair.in
