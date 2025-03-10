@@ -721,6 +721,18 @@ bool checkPhraseBoundaries()
     return true;
  }
 
+ /**
+  * @brief Calculate the memory usage of a specific section of code.
+  * @param[in] curr_mem [size_t] The current memory returned by malloc_count
+  * @param[in] prev_mem [size_t] The previous memory returned by malloc_count
+  */
+ double calculateMemoryUsage(size_t curr_mem, size_t prev_mem)
+ {
+    double diff_mb = static_cast<double>(curr_mem) - static_cast<double>(prev_mem);
+    diff_mb /= (1024 * 1024);
+    return diff_mb;
+ }
+
 /**
  * @brief Convert the chars of reference to int.
  * This function remaps the characters in the reference sequence to integers. The remapping works as follows:
@@ -2338,13 +2350,17 @@ void repair(std::ofstream& R, std::ofstream& C)
 
     // Build the tree
     auto build_interval_start = std::chrono::high_resolution_clock::now();
-    buildIntervalTree(); 
+    size_t prev_mem = malloc_count_current();
+    buildIntervalTree();
+    size_t curr_mem = malloc_count_current();
+    spdlog::debug("Interval tree at the start uses {:.3f} MB at the start.", calculateMemoryUsage(curr_mem, prev_mem)); 
     auto build_interval_end = std::chrono::high_resolution_clock::now();
     build_interval_time += build_interval_end - build_interval_start;
 
     oid = extractMax(&Heap);
     while (oid != -1)
     {
+        size_t prev_mem = malloc_count_current();
         Trecord* orec = &Rec.records[oid];
         // When max frequency is 1, RePair ends.
         if (orec->freq == 1){
@@ -2886,6 +2902,10 @@ void repair(std::ofstream& R, std::ofstream& C)
         // Update n
         n++;
 
+        // Calculate memory increase/decrease for the iteration
+        size_t curr_mem = malloc_count_current();
+        //spdlog::debug("The memory changed by {:.3f} MB this iteration", calculateMemoryUsage(curr_mem, prev_mem));
+
         // Debug
         if (verbosity == 2){
             spdlog::trace("");
@@ -3028,7 +3048,10 @@ int main(int argc, char *argv[])
 
     // Call populatePhrases function
     auto parse_phrase_start = std::chrono::high_resolution_clock::now();
+    size_t prev_mem = malloc_count_current();
     populatePhrases(pfile, min_threshold);
+    size_t curr_mem = malloc_count_current();
+    spdlog::debug("The hash tables and phrases use {:.3f} MB at the start", calculateMemoryUsage(curr_mem, prev_mem)); 
     auto parse_phrase_end = std::chrono::high_resolution_clock::now();
     populate_phrase_time += parse_phrase_end - parse_phrase_start;
 
