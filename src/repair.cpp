@@ -283,13 +283,13 @@ void printPhrase(PhraseNode* curr_phrase)
             curr_elem = curr_elem->prev;
         }
 
-        spdlog::debug("Phrase (Not explicit): {}", content);
+        spdlog::trace("Phrase (Not explicit): {}", content);
     }
     else{
         for (unsigned int i : curr_phrase->content){
             content += printSymbol(i) + " ";
         }
-        spdlog::debug("Phrase (explicit): \033[1;31m{}\033[0m", content);
+        spdlog::trace("Phrase (explicit): \033[1;31m{}\033[0m", content);
     }
 }
 
@@ -2374,8 +2374,6 @@ void repair(std::ofstream& R, std::ofstream& C)
         auto sbound_end = std::chrono::high_resolution_clock::now();
         source_boundary_time += sbound_end - sbound_start;
         
-        spdlog::debug("After source boundary");
-
         // Calculate number of invalid consecutive pairs of chars
         int maxLeft = orec->pair.left;
         int maxRight = orec->pair.right;
@@ -2618,8 +2616,6 @@ void repair(std::ofstream& R, std::ofstream& C)
             auto nexp_end = std::chrono::high_resolution_clock::now();
             nonexplicit_phrase_time += nexp_end - nexp_start;
         }
-
-        spdlog::debug("Non explicit phrase replacement");
         
         // Have to process the explicit phrases
         auto exp_start = std::chrono::high_resolution_clock::now();
@@ -2860,8 +2856,6 @@ void repair(std::ofstream& R, std::ofstream& C)
         }
         auto exp_end = std::chrono::high_resolution_clock::now();
         explicit_phrase_time += exp_end - exp_start;
-
-        spdlog::debug("Explicit phrase replacement");
 
         // Check the number of chars replaced is correct
         if (verbosity == 2)
