@@ -30,6 +30,7 @@ void printPhraseList();
 bool checkExpPairs();
 bool checkPhraseBoundaries();
 bool checkSourceBoundaries();
+double calculateMemoryUsage(size_t curr_mem, size_t prev_mem);
 
 // Necessary functions
 uint64_t calculateParseBytes(std::ifstream& pfile);
