@@ -17,7 +17,7 @@ class RefLinkedList
         ~RefLinkedList() {
             while (head != nullptr) {
                 RefNode* temp = head;
-                head = head->forward;
+                head = head->next;
                 delete temp;
             }
         }
@@ -38,7 +38,6 @@ class RefLinkedList
                 head = tail = newNode;
             } else {
                 tail->next = newNode;
-                tail->forward = newNode;
                 newNode->prev = tail;
                 tail = newNode;
             }
