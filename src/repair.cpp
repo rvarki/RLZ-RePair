@@ -78,9 +78,8 @@ std::unordered_map<std::pair<int, int>, std::deque<int>, pair_int_hash> hash_ran
 struct ExpPair
 {
     PhraseNode* exp_phrase;
-    std::list<int>::iterator left; 
-    std::list<int>::iterator right;
-    ExpPair(PhraseNode* phrase, std::list<int>::iterator l, std::list<int>::iterator r) : exp_phrase(phrase), left(l), right(r) {}
+    std::list<int>::iterator left; //Store only the left iterator pointer of the pair
+    ExpPair(PhraseNode* phrase, std::list<int>::iterator l) : exp_phrase(phrase), left(l) {}
 };
 
 struct ExpPairHash {
@@ -88,14 +87,13 @@ struct ExpPairHash {
         // Combine the hash of the exp_phrase pointer, left, and right
         std::size_t h1 = std::hash<PhraseNode*>{}(exp.exp_phrase);
         std::size_t h2 = std::hash<int*>{}(&(*exp.left));  
-        std::size_t h3 = std::hash<int*>{}(&(*exp.right));
-        return h1 ^ (h2 << 1) ^ (h3 << 2);  // Combine the hashes
+        return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));    // Combine the hashes
     }
 };
 
 struct ExpPairEqual {
     bool operator()(const ExpPair& lhs, const ExpPair& rhs) const {
-        return lhs.exp_phrase == rhs.exp_phrase && lhs.left == rhs.left && lhs.right == rhs.right;
+        return lhs.exp_phrase == rhs.exp_phrase && lhs.left == rhs.left;
     }
 };
 
@@ -577,7 +575,7 @@ bool checkExpPairs()
                 }
                 if (sameCharCount == 1 || sameCharCount % 2 == 0)
                 {
-                    if (exp_pairs_tmp[{*pit,*it}].find(ExpPair(curr_phrase, pit, it)) == exp_pairs_tmp[{*pit,*it}].end()){
+                    if (exp_pairs_tmp[{*pit,*it}].find(ExpPair(curr_phrase, pit)) == exp_pairs_tmp[{*pit,*it}].end()){
                         printPhrase(curr_phrase);
                         spdlog::error("Pair missing: ({},{})", printSymbol(*pit), printSymbol(*it));
                         // std::cout << "Address of phrase: " << &(*curr_phrase) << std::endl;
@@ -586,12 +584,12 @@ bool checkExpPairs()
                         return false;
                     }
                     else{
-                        exp_pairs_tmp[{*pit,*it}].erase(ExpPair(curr_phrase, pit, it));
+                        exp_pairs_tmp[{*pit,*it}].erase(ExpPair(curr_phrase, pit));
                     }
                 }
                 else
                 {
-                    if (exp_pairs_tmp[{*pit,*it}].find(ExpPair(curr_phrase, pit, it)) != exp_pairs_tmp[{*pit,*it}].end()){
+                    if (exp_pairs_tmp[{*pit,*it}].find(ExpPair(curr_phrase, pit)) != exp_pairs_tmp[{*pit,*it}].end()){
                         printPhrase(curr_phrase);
                         spdlog::error("Pair exists that should not exist: ({},{})", printSymbol(*pit), printSymbol(*it));
                         return false;
@@ -930,7 +928,7 @@ void populatePhrases(std::ifstream& pfile, int min_threshold)
                     std::list<int>::iterator pit = exp_phrase->content.begin();
                     // If length of phrase >1 then add the pairs to exp pairs
                     if (nit != exp_phrase->content.end()){
-                        exp_pairs[{*pit, *nit}].insert(ExpPair(exp_phrase, pit, nit));
+                        exp_pairs[{*pit, *nit}].insert(ExpPair(exp_phrase, pit));
                         // If same character then might have to update exp pairs
                         if (*pit == *nit){
                             updateExpPairs(exp_phrase, pit, true);
@@ -1054,10 +1052,10 @@ void updateExpPairs(PhraseNode* p, std::list<int>::iterator it, bool leftInsert)
             else{
                 sameCharCount++;
                 if (sameCharCount % 2 == 0){
-                    exp_pairs[{letter,letter}].insert(ExpPair(p, it, nextIt));
+                    exp_pairs[{letter,letter}].insert(ExpPair(p, it));
                 }
                 else{
-                    exp_pairs[{letter,letter}].erase(ExpPair(p, it, nextIt));
+                    exp_pairs[{letter,letter}].erase(ExpPair(p, it));
                 }
             }
             it = nextIt;
@@ -1086,10 +1084,10 @@ void updateExpPairs(PhraseNode* p, std::list<int>::iterator it, bool leftInsert)
             else{
                 sameCharCount++;
                 if (sameCharCount % 2 == 0){
-                    exp_pairs[{letter,letter}].insert(ExpPair(p, it, nextIt));
+                    exp_pairs[{letter,letter}].insert(ExpPair(p, it));
                 }
                 else{
-                    exp_pairs[{letter,letter}].erase(ExpPair(p, it, nextIt));
+                    exp_pairs[{letter,letter}].erase(ExpPair(p, it));
                 }
             }
             it = nextIt;
@@ -1137,10 +1135,10 @@ void updateMergeExpPairs(PhraseNode* p, std::list<int>::iterator it)
         else{
             sameCharCount++;
             if (sameCharCount % 2 == 0){
-                exp_pairs[{letter,letter}].insert(ExpPair(p, it, nextIt));
+                exp_pairs[{letter,letter}].insert(ExpPair(p, it));
             }
             else{
-                exp_pairs[{letter,letter}].erase(ExpPair(p, it, nextIt));
+                exp_pairs[{letter,letter}].erase(ExpPair(p, it));
             }
             it = nextIt;
             nextIt = std::next(nextIt);
@@ -1173,8 +1171,8 @@ void reassignExpPairs(PhraseNode* origPhrase, PhraseNode* newPhrase)
 
         if (sameCharCount == 1 || sameCharCount % 2 == 0)
         {
-            exp_pairs[{*it, *nextIt}].erase(ExpPair(origPhrase, it, nextIt));
-            exp_pairs[{*it, *nextIt}].insert(ExpPair(newPhrase, it, nextIt));
+            exp_pairs[{*it, *nextIt}].erase(ExpPair(origPhrase, it));
+            exp_pairs[{*it, *nextIt}].insert(ExpPair(newPhrase, it));
         }
         it = nextIt;
         nextIt = std::next(nextIt);
@@ -1226,7 +1224,7 @@ void reassignExpPairs(PhraseNode* origPhrase, PhraseNode* newPhrase)
         curr_phrase->content.splice(curr_phrase->content.end(), next_phrase->content);
         plist.remove(next_phrase); // Deletes the next phrase
         // Add the new exp pair to exp_pairs
-        exp_pairs[{*l, *r}].insert(ExpPair(curr_phrase, l, r));
+        exp_pairs[{*l, *r}].insert(ExpPair(curr_phrase, l));
         if (*l == *r){
             updateMergeExpPairs(curr_phrase, l);
         }
@@ -1368,7 +1366,7 @@ void phraseBoundaries(int left_elem, int right_elem)
                     if (same_letter_count < 3){ // If there are two or less same char letters added together then can add to exp_pairs normally.
                         auto l = exp_phrase->content.begin();
                         auto r = std::prev(exp_phrase->content.end());
-                        exp_pairs[{*l, *r}].insert(ExpPair(exp_phrase, l, r));
+                        exp_pairs[{*l, *r}].insert(ExpPair(exp_phrase, l));
                         // Only two characters guaranteed so do not have to check consecutive characters
                     }
                     else{ // If there are more than three or more same letter chars added together, then have to call updateExpPairs.
@@ -1607,7 +1605,7 @@ void phraseBoundaries(int left_elem, int right_elem)
                     // If did not add same letter then can add to exp_pairs directly.
                     if (same_letter_count == 0){
                         // Add the new exp pair to exp_pairs
-                        exp_pairs[{*l, *r}].insert(ExpPair(next_phrase, l, r));
+                        exp_pairs[{*l, *r}].insert(ExpPair(next_phrase, l));
                     }
                     // If consecutive characters, then might have to change exp_pairs (i.e e + ee -> ee + e)
                     else{
@@ -1727,7 +1725,7 @@ void phraseBoundaries(int left_elem, int right_elem)
                     // If did not add same letter then can add to exp_pairs directly.
                     if (same_letter_count == 0){
                         // Add the new exp pair to exp_pairs
-                        exp_pairs[{*l, *r}].insert(ExpPair(curr_phrase, l, r));
+                        exp_pairs[{*l, *r}].insert(ExpPair(curr_phrase, l));
                     }
                     // If consecutive characters, then might have to change exp_pairs (i.e e + ee -> ee + e)
                     else{
@@ -1814,7 +1812,7 @@ void phraseBoundaries(int left_elem, int right_elem)
                 curr_phrase->content.splice(curr_phrase->content.end(), next_phrase->content);
                 next_phrase = plist.remove(next_phrase); // Should be safe to call remove. The pointers within content should still be valid.
                 // Add the new exp pair to exp_pairs
-                exp_pairs[{*l, *r}].insert(ExpPair(curr_phrase, l, r));
+                exp_pairs[{*l, *r}].insert(ExpPair(curr_phrase, l));
                 if (*l == *r){
                     updateMergeExpPairs(curr_phrase, l);
                 }
@@ -1936,7 +1934,7 @@ void sourceBoundaries(int left_elem, int right_elem)
                     // Update the information of the current phrase (left node pointer & existence).
                     curr_phrase->lnode = rlist.findForwardRef(curr_phrase->lnode);
                     // Add the new exp pair to exp_pairs
-                    exp_pairs[{*l,*r}].insert(ExpPair(prev_phrase, l, r));
+                    exp_pairs[{*l,*r}].insert(ExpPair(prev_phrase, l));
                     // If replacing the same letter pair, see how many letters at the ends of the phrases can be made explicit
                     int same_letter_count = 0;
                     if (left_elem == right_elem){
@@ -2130,7 +2128,7 @@ void sourceBoundaries(int left_elem, int right_elem)
                     // Update the information of the current phrase (right node pointer & existence).
                     curr_phrase->rnode = rlist.findNearestRef(curr_phrase->rnode->prev);
                     // Add the new exp pair to exp_pairs
-                    exp_pairs[{*l,*r}].insert(ExpPair(next_phrase, l, r));
+                    exp_pairs[{*l,*r}].insert(ExpPair(next_phrase, l));
                     // If replacing the same letter pair, see how many letters at the ends of the phrases can be made explicit
                     int same_letter_count = 0;
                     if (left_elem == right_elem){
@@ -2643,7 +2641,7 @@ void repair(std::ofstream& R, std::ofstream& C)
             {
                 PhraseNode* curr_phrase = it->exp_phrase;
                 auto leftIt = it->left;
-                auto rightIt = it->right;
+                auto rightIt = std::next(leftIt);
                 std::list<int>::iterator leftleftIt;
                 std::list<int>::iterator rightrightIt;
 
@@ -2667,10 +2665,10 @@ void repair(std::ofstream& R, std::ofstream& C)
                         rightrightIt = std::next(rightIt);
                         // Decrease frequency of left pair effected by merge.
                         decreaseFrequency(*leftleftIt, *leftIt);
-                        exp_pairs[{*leftleftIt, *leftIt}].erase(ExpPair(curr_phrase, leftleftIt, leftIt));
+                        exp_pairs[{*leftleftIt, *leftIt}].erase(ExpPair(curr_phrase, leftleftIt));
                         // Increase frequency of new pair.
                         increaseFrequency(*leftleftIt, n);
-                        exp_pairs[{*leftleftIt,n}].insert(ExpPair(curr_phrase, leftleftIt, leftIt));
+                        exp_pairs[{*leftleftIt,n}].insert(ExpPair(curr_phrase, leftleftIt));
                         if (*leftleftIt == n){
                             rightAddConsecutive = true;
                         }
@@ -2680,10 +2678,10 @@ void repair(std::ofstream& R, std::ofstream& C)
                         }
                         // Decrease frequency of right pair effected by merge.
                         decreaseFrequency(*rightIt, *rightrightIt);
-                        exp_pairs[{*rightIt, *rightrightIt}].erase(ExpPair(curr_phrase, rightIt, rightrightIt));
+                        exp_pairs[{*rightIt, *rightrightIt}].erase(ExpPair(curr_phrase, rightIt));
                         // Increase frequency of new pair.
                         increaseFrequency(n, *rightrightIt);
-                        exp_pairs[{n, *rightrightIt}].insert(ExpPair(curr_phrase, leftIt, rightrightIt));
+                        exp_pairs[{n, *rightrightIt}].insert(ExpPair(curr_phrase, leftIt));
                         if (*rightrightIt == n){
                             leftAddConsecutive = true;
                         }
@@ -2790,10 +2788,10 @@ void repair(std::ofstream& R, std::ofstream& C)
                         // Decrease frequency of right pair effected by merge.
                         rightrightIt = std::next(rightIt);
                         decreaseFrequency(*rightIt, *rightrightIt);
-                        exp_pairs[{*rightIt, *rightrightIt}].erase(ExpPair(curr_phrase, rightIt, rightrightIt));
+                        exp_pairs[{*rightIt, *rightrightIt}].erase(ExpPair(curr_phrase, rightIt));
                         // Increase frequency of new pair.
                         increaseFrequency(n, *rightrightIt);
-                        exp_pairs[{n, *rightrightIt}].insert(ExpPair(curr_phrase, leftIt, rightrightIt));
+                        exp_pairs[{n, *rightrightIt}].insert(ExpPair(curr_phrase, leftIt));
                         if (*rightrightIt == n){
                             leftAddConsecutive = true;
                         }
@@ -2807,10 +2805,10 @@ void repair(std::ofstream& R, std::ofstream& C)
                         // Decrease frequency of left pair effected by merge.
                         leftleftIt = std::prev(leftIt);
                         decreaseFrequency(*leftleftIt, *leftIt);
-                        exp_pairs[{*leftleftIt, *leftIt}].erase(ExpPair(curr_phrase, leftleftIt, leftIt));
+                        exp_pairs[{*leftleftIt, *leftIt}].erase(ExpPair(curr_phrase, leftleftIt));
                         // Increase frequency of new pair.
                         increaseFrequency(*leftleftIt, n);
-                        exp_pairs[{*leftleftIt, n}].insert(ExpPair(curr_phrase, leftleftIt, leftIt));
+                        exp_pairs[{*leftleftIt, n}].insert(ExpPair(curr_phrase, leftleftIt));
                         if (*leftleftIt == n){
                             rightAddConsecutive = true;
                         }
