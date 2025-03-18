@@ -6,11 +6,10 @@ class RefNode
 {
     public:
         int val;
-        int pos;
         int prev, next;
         bool deleted;
-        RefNode() : val(-1), pos(-1), prev(-1), next(-1), deleted(false) {};
-        RefNode(int value, int refPos) : val(value), pos(refPos), prev(-1), next(-1), deleted(false) {}
+        RefNode() : val(-1), prev(-1), next(-1), deleted(false) {};
+        RefNode(int value) : val(value), prev(-1), next(-1), deleted(false) {}
 };
 
 class PhraseNode

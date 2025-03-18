@@ -31,7 +31,7 @@ class RefLinkedList
                 std::cerr << "ERROR: Tried inserting more elements than allowed into the reference linked-list array!" << std::endl;
                 return -1; 
             } 
-            nodes.emplace_back(value, size); // Updates size but node pos zero-index
+            nodes.emplace_back(value); // Updates size but node pos zero-index
             if (tail == -1) {
                 head = tail = 0;
             } else {
