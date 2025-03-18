@@ -14,7 +14,6 @@
 #include <stack>
 #include <cassert>
 #include <vector> 
-#include <deque>
 #include "repair.h"
 #include "rbintervaltree.h"
 #include "doublelinkedlist.h"
@@ -69,7 +68,7 @@ struct pair_int_hash {
 
 // Hash table containing the reference ranges of pairs (bi-grams). 
 // The vector contains the left endpoint of the range corresponding to the pair in the bi-gram since the range is left endpoint to left endpoint + 1
-std::unordered_map<std::pair<int, int>, std::deque<int>, pair_int_hash> hash_ranges;
+std::unordered_map<std::pair<int, int>, std::vector<int>, pair_int_hash> hash_ranges;
 
 // Hash table containing info about the pairs within the explicit phrases
 struct ExpPair
@@ -767,7 +766,7 @@ void prepareRef(std::vector<unsigned char>& rtext)
         ref_pair.second = rlist->nodes[curr_elem].val;
         if (i != 0){
             auto hash_range_start = std::chrono::high_resolution_clock::now();
-            hash_ranges[ref_pair].push_back(i-1);
+            hash_ranges[ref_pair].emplace_back(i-1);
             auto hash_range_end = std::chrono::high_resolution_clock::now();
             hash_range_time += hash_range_end - hash_range_start;
         }
@@ -2403,7 +2402,7 @@ void repair(std::ofstream& R, std::ofstream& C)
         if (hash_ranges.find(max_pair) != hash_ranges.end())
         {
             spdlog::trace("Going through the non-explicit phrases");
-            std::deque<int> ranges = hash_ranges[max_pair];
+            std::vector<int> ranges = hash_ranges[max_pair];
 
             auto nexp_start = std::chrono::high_resolution_clock::now();
             for (int curr_range : ranges)
@@ -2592,12 +2591,12 @@ void repair(std::ofstream& R, std::ofstream& C)
                 if (llref != -1){
                     hash_pair.first = rlist->nodes[llref].val;
                     hash_pair.second = n;
-                    hash_ranges[hash_pair].push_back(llref);
+                    hash_ranges[hash_pair].emplace_back(llref);
                 }
                 if (rrref != -1){
                     hash_pair.first = n;
                     hash_pair.second = rlist->nodes[rrref].val;
-                    hash_ranges[hash_pair].push_back(lref);
+                    hash_ranges[hash_pair].emplace_back(lref);
                 }
                 auto hash_range_end = std::chrono::high_resolution_clock::now();
                 hash_range_time += hash_range_end - hash_range_start;
