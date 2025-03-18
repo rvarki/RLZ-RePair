@@ -6,11 +6,10 @@ class RefNode
 {
     public:
         int val;
-        int pos;
         int prev, next;
         bool deleted;
-        RefNode() : val(-1), pos(-1), prev(-1), next(-1), deleted(false) {};
-        RefNode(int value, int refPos) : val(value), pos(refPos), prev(-1), next(-1), deleted(false) {}
+        RefNode() : val(-1), prev(-1), next(-1), deleted(false) {};
+        RefNode(int value) : val(value), prev(-1), next(-1), deleted(false) {}
 };
 
 class PhraseNode
@@ -20,13 +19,13 @@ class PhraseNode
         bool exp;
         int lnode;
         int rnode;
-        int ltmp; // Needed for case where consecutive non exp phrase are replacing their edges in the same step
-        int rtmp; // Needed for case where consecutive non exp phrase are replacing their edges in the same step
+        bool ltmp; // Needed for case where consecutive non exp phrase are replacing their edges in the same step
+        bool rtmp; // Needed for case where consecutive non exp phrase are replacing their edges in the same step
         PhraseNode* prev;
         PhraseNode* next;
 
-        PhraseNode(int lnode, int rnode) : content({}), exp(false), lnode(lnode), rnode(rnode), ltmp(-1), rtmp(-1), prev(nullptr), next(nullptr) {}
-        PhraseNode(std::list<int> ilist) : content(ilist), exp(true), lnode(-1), rnode(-1), ltmp(-1), rtmp(-1), prev(nullptr), next(nullptr) {}
+        PhraseNode(int lnode, int rnode) : content({}), exp(false), lnode(lnode), rnode(rnode), ltmp(false), rtmp(false), prev(nullptr), next(nullptr) {}
+        PhraseNode(std::list<int> ilist) : content(ilist), exp(true), lnode(-1), rnode(-1), ltmp(false), rtmp(false), prev(nullptr), next(nullptr) {}
 };
 
 

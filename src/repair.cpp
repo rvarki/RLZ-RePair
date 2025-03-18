@@ -14,7 +14,6 @@
 #include <stack>
 #include <cassert>
 #include <vector> 
-#include <deque>
 #include "repair.h"
 #include "rbintervaltree.h"
 #include "doublelinkedlist.h"
@@ -69,7 +68,7 @@ struct pair_int_hash {
 
 // Hash table containing the reference ranges of pairs (bi-grams). 
 // The vector contains the left endpoint of the range corresponding to the pair in the bi-gram since the range is left endpoint to left endpoint + 1
-std::unordered_map<std::pair<int, int>, std::deque<int>, pair_int_hash> hash_ranges;
+std::unordered_map<std::pair<int, int>, std::vector<int>, pair_int_hash> hash_ranges;
 
 // Hash table containing info about the pairs within the explicit phrases
 struct ExpPair
@@ -767,7 +766,7 @@ void prepareRef(std::vector<unsigned char>& rtext)
         ref_pair.second = rlist->nodes[curr_elem].val;
         if (i != 0){
             auto hash_range_start = std::chrono::high_resolution_clock::now();
-            hash_ranges[ref_pair].push_back(i-1);
+            hash_ranges[ref_pair].emplace_back(i-1);
             auto hash_range_end = std::chrono::high_resolution_clock::now();
             hash_range_time += hash_range_end - hash_range_start;
         }
@@ -1288,14 +1287,14 @@ void phraseBoundaries(int left_elem, int right_elem)
                     next_phrase->rnode = rlist->findNearestRef(next_phrase->rnode);
 
                     // First remove the offending entries in the tree.
-                    spdlog::trace("Removing ({},{}) from tree", rlist->nodes[curr_phrase->lnode].pos, rlist->nodes[curr_phrase->rnode].pos);
+                    spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode, curr_phrase->rnode);
                     auto update_interval_start = std::chrono::high_resolution_clock::now();
-                    phrase_tree.remove({rlist->nodes[curr_phrase->lnode].pos, rlist->nodes[curr_phrase->rnode].pos}, curr_phrase);
+                    phrase_tree.remove({curr_phrase->lnode, curr_phrase->rnode}, curr_phrase);
                     auto update_interval_end = std::chrono::high_resolution_clock::now();
                     update_interval_time += update_interval_end - update_interval_start;
-                    spdlog::trace("Removing ({},{}) from tree", rlist->nodes[next_phrase->lnode].pos, rlist->nodes[next_phrase->rnode].pos);
+                    spdlog::trace("Removing ({},{}) from tree", next_phrase->lnode, next_phrase->rnode);
                     update_interval_start = std::chrono::high_resolution_clock::now();
-                    phrase_tree.remove({rlist->nodes[next_phrase->lnode].pos, rlist->nodes[next_phrase->rnode].pos}, next_phrase);
+                    phrase_tree.remove({next_phrase->lnode, next_phrase->rnode}, next_phrase);
                     update_interval_end = std::chrono::high_resolution_clock::now();
                     update_interval_time += update_interval_end - update_interval_start;
 
@@ -1344,12 +1343,12 @@ void phraseBoundaries(int left_elem, int right_elem)
                     int same_letter_count = 0;
                     if (left_elem == right_elem){
                         same_letter_count = 2;
-                        while (curr_phrase->rnode != -1 && rlist->nodes[curr_phrase->lnode].pos < rlist->nodes[curr_phrase->rnode].pos && rlist->nodes[curr_phrase->rnode].val == left_elem){
+                        while (curr_phrase->rnode != -1 && curr_phrase->lnode < curr_phrase->rnode && rlist->nodes[curr_phrase->rnode].val == left_elem){
                             same_letter_count++;
                             curr_phrase->rnode = rlist->findNearestRef(rlist->nodes[curr_phrase->rnode].prev);
                             content.push_front(left_elem);
                         }
-                        while (next_phrase->lnode != -1 && rlist->nodes[next_phrase->lnode].pos < rlist->nodes[next_phrase->rnode].pos && rlist->nodes[next_phrase->lnode].val == right_elem){
+                        while (next_phrase->lnode != -1 && next_phrase->lnode < next_phrase->rnode && rlist->nodes[next_phrase->lnode].val == right_elem){
                             same_letter_count++;
                             next_phrase->lnode = rlist->findForwardRef(next_phrase->lnode);
                             content.push_back(right_elem);
@@ -1371,12 +1370,12 @@ void phraseBoundaries(int left_elem, int right_elem)
                     }
                     
                     // If the current or next phrases are empty we delete
-                    if (curr_phrase->rnode == -1 || curr_phrase->lnode == -1 || rlist->nodes[curr_phrase->rnode].pos < rlist->nodes[curr_phrase->lnode].pos){
+                    if (curr_phrase->rnode == -1 || curr_phrase->lnode == -1 || curr_phrase->rnode < curr_phrase->lnode){
                         deleteCurr = true;
                         prev_phrase = curr_phrase->prev; // Set the previous phrase
                         plist.remove(curr_phrase);
                     }
-                    if (next_phrase->rnode == -1 || next_phrase->lnode == -1 || rlist->nodes[next_phrase->lnode].pos > rlist->nodes[next_phrase->rnode].pos){
+                    if (next_phrase->rnode == -1 || next_phrase->lnode == -1 || next_phrase->lnode > next_phrase->rnode){
                         deleteNext = true;
                         next_next_phrase = next_phrase->next; // Set the next next phrase
                         plist.remove(next_phrase);  
@@ -1385,14 +1384,14 @@ void phraseBoundaries(int left_elem, int right_elem)
                     // Update the tree with the new entries
                     // If both the current and next phrase still exist
                     if (!deleteCurr && !deleteNext){
-                        spdlog::trace("Adding ({},{}) to the tree", rlist->nodes[curr_phrase->lnode].pos, rlist->nodes[curr_phrase->rnode].pos);
+                        spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode, curr_phrase->rnode);
                         update_interval_start = std::chrono::high_resolution_clock::now();
-                        phrase_tree.insert({rlist->nodes[curr_phrase->lnode].pos, rlist->nodes[curr_phrase->rnode].pos}, curr_phrase);
+                        phrase_tree.insert({curr_phrase->lnode, curr_phrase->rnode}, curr_phrase);
                         update_interval_end = std::chrono::high_resolution_clock::now();
                         update_interval_time += update_interval_end - update_interval_start;
-                        spdlog::trace("Adding ({},{}) to the tree", rlist->nodes[next_phrase->lnode].pos, rlist->nodes[next_phrase->rnode].pos);
+                        spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode, next_phrase->rnode);
                         update_interval_start = std::chrono::high_resolution_clock::now();
-                        phrase_tree.insert({rlist->nodes[next_phrase->lnode].pos, rlist->nodes[next_phrase->rnode].pos}, next_phrase);
+                        phrase_tree.insert({next_phrase->lnode, next_phrase->rnode}, next_phrase);
                         update_interval_end = std::chrono::high_resolution_clock::now();
                         update_interval_time += update_interval_end - update_interval_start;
 
@@ -1411,9 +1410,9 @@ void phraseBoundaries(int left_elem, int right_elem)
                     }
                     // If the current phrase is deleted but the next phrase still exists
                     else if (deleteCurr && !deleteNext){
-                        spdlog::trace("Adding ({},{}) to the tree", rlist->nodes[next_phrase->lnode].pos, rlist->nodes[next_phrase->rnode].pos);
+                        spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode, next_phrase->rnode);
                         update_interval_start = std::chrono::high_resolution_clock::now();
-                        phrase_tree.insert({rlist->nodes[next_phrase->lnode].pos, rlist->nodes[next_phrase->rnode].pos}, next_phrase);
+                        phrase_tree.insert({next_phrase->lnode, next_phrase->rnode}, next_phrase);
                         update_interval_end = std::chrono::high_resolution_clock::now();
                         update_interval_time += update_interval_end - update_interval_start;           
                         update_bound_hash_start = std::chrono::high_resolution_clock::now();
@@ -1440,9 +1439,9 @@ void phraseBoundaries(int left_elem, int right_elem)
                     }
                     // If current phrase is not deleted but next phrase is deleted
                     else if (!deleteCurr && deleteNext){
-                        spdlog::trace("Adding ({},{}) to the tree", rlist->nodes[curr_phrase->lnode].pos, rlist->nodes[curr_phrase->rnode].pos);
+                        spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode, curr_phrase->rnode);
                         update_interval_start = std::chrono::high_resolution_clock::now();
-                        phrase_tree.insert({rlist->nodes[curr_phrase->lnode].pos, rlist->nodes[curr_phrase->rnode].pos}, curr_phrase);
+                        phrase_tree.insert({curr_phrase->lnode, curr_phrase->rnode}, curr_phrase);
                         update_interval_end = std::chrono::high_resolution_clock::now();
                         update_interval_time += update_interval_end - update_interval_start;
                         
@@ -1554,9 +1553,9 @@ void phraseBoundaries(int left_elem, int right_elem)
                     curr_phrase->rnode = rlist->findNearestRef(curr_phrase->rnode);
 
                     // First remove the offending entry from the tree
-                    spdlog::trace("Removing ({},{}) from tree", rlist->nodes[curr_phrase->lnode].pos, rlist->nodes[curr_phrase->rnode].pos);
+                    spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode, curr_phrase->rnode);
                     auto update_interval_start = std::chrono::high_resolution_clock::now();
-                    phrase_tree.remove({rlist->nodes[curr_phrase->lnode].pos, rlist->nodes[curr_phrase->rnode].pos}, curr_phrase);
+                    phrase_tree.remove({curr_phrase->lnode, curr_phrase->rnode}, curr_phrase);
                     auto update_interval_end = std::chrono::high_resolution_clock::now();
                     update_interval_time += update_interval_end - update_interval_start;
 
@@ -1592,7 +1591,7 @@ void phraseBoundaries(int left_elem, int right_elem)
                     int same_letter_count = 0;
                     if (left_elem == right_elem){
                         same_letter_count = 2;
-                        while(curr_phrase->rnode != -1 && rlist->nodes[curr_phrase->lnode].pos < rlist->nodes[curr_phrase->rnode].pos && rlist->nodes[curr_phrase->rnode].val == left_elem){
+                        while(curr_phrase->rnode != -1 && curr_phrase->lnode < curr_phrase->rnode && rlist->nodes[curr_phrase->rnode].val == left_elem){
                             same_letter_count++;
                             curr_phrase->rnode = rlist->findNearestRef(rlist->nodes[curr_phrase->rnode].prev);
                             next_phrase->content.push_front(left_elem);
@@ -1610,7 +1609,7 @@ void phraseBoundaries(int left_elem, int right_elem)
                     }
                     
                     // If the non-explicit phrase is empty we delete it.
-                    if (curr_phrase->rnode == -1 || curr_phrase->lnode == -1 || rlist->nodes[curr_phrase->rnode].pos < rlist->nodes[curr_phrase->lnode].pos){ 
+                    if (curr_phrase->rnode == -1 || curr_phrase->lnode == -1 || curr_phrase->rnode < curr_phrase->lnode){ 
                         deleteCurr = true;
                         prev_phrase = curr_phrase->prev;
                         plist.remove(curr_phrase);
@@ -1618,9 +1617,9 @@ void phraseBoundaries(int left_elem, int right_elem)
 
                     // If the current phrase is not deleted
                     if (!deleteCurr){
-                        spdlog::trace("Adding ({},{}) to the tree", rlist->nodes[curr_phrase->lnode].pos, rlist->nodes[curr_phrase->rnode].pos);
+                        spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode, curr_phrase->rnode);
                         update_interval_start = std::chrono::high_resolution_clock::now();
-                        phrase_tree.insert({rlist->nodes[curr_phrase->lnode].pos, rlist->nodes[curr_phrase->rnode].pos}, curr_phrase);
+                        phrase_tree.insert({curr_phrase->lnode, curr_phrase->rnode}, curr_phrase);
                         update_interval_end = std::chrono::high_resolution_clock::now();
                         update_interval_time += update_interval_end - update_interval_start;
                        
@@ -1673,9 +1672,9 @@ void phraseBoundaries(int left_elem, int right_elem)
                     next_phrase->rnode = rlist->findNearestRef(next_phrase->rnode);
 
                     // First remove the offending entry from the tree
-                    spdlog::trace("Removing ({},{}) from tree", rlist->nodes[next_phrase->lnode].pos, rlist->nodes[next_phrase->rnode].pos);
+                    spdlog::trace("Removing ({},{}) from tree", next_phrase->lnode, next_phrase->rnode);
                     auto update_interval_start = std::chrono::high_resolution_clock::now();
-                    phrase_tree.remove({rlist->nodes[next_phrase->lnode].pos, rlist->nodes[next_phrase->rnode].pos}, next_phrase);
+                    phrase_tree.remove({next_phrase->lnode, next_phrase->rnode}, next_phrase);
                     auto update_interval_end = std::chrono::high_resolution_clock::now();
                     update_interval_time += update_interval_end - update_interval_start;
 
@@ -1712,7 +1711,7 @@ void phraseBoundaries(int left_elem, int right_elem)
                     int same_letter_count = 0;
                     if (left_elem == right_elem){
                         same_letter_count = 2;
-                        while(next_phrase->lnode != -1 && rlist->nodes[next_phrase->lnode].pos < rlist->nodes[next_phrase->rnode].pos && rlist->nodes[next_phrase->lnode].val == right_elem){
+                        while(next_phrase->lnode != -1 && next_phrase->lnode < next_phrase->rnode && rlist->nodes[next_phrase->lnode].val == right_elem){
                             same_letter_count++;
                             next_phrase->lnode = rlist->findForwardRef(next_phrase->lnode);
                             curr_phrase->content.push_back(right_elem);
@@ -1729,7 +1728,7 @@ void phraseBoundaries(int left_elem, int right_elem)
                         updateExpPairs(curr_phrase, r, false);
                     }
                     
-                    if (next_phrase->rnode == -1 || next_phrase->lnode == -1 || rlist->nodes[next_phrase->lnode].pos > rlist->nodes[next_phrase->rnode].pos){
+                    if (next_phrase->rnode == -1 || next_phrase->lnode == -1 || next_phrase->lnode > next_phrase->rnode){
                         deleteNext = true;
                         next_next_phrase = next_phrase->next;
                         plist.remove(next_phrase);
@@ -1737,9 +1736,9 @@ void phraseBoundaries(int left_elem, int right_elem)
 
                     // If the next phrase is not deleted
                     if (!deleteNext){
-                        spdlog::trace("Adding ({},{}) to the tree", rlist->nodes[next_phrase->lnode].pos, rlist->nodes[next_phrase->rnode].pos);
+                        spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode, next_phrase->rnode);
                         update_interval_start = std::chrono::high_resolution_clock::now();
-                        phrase_tree.insert({rlist->nodes[next_phrase->lnode].pos, rlist->nodes[next_phrase->rnode].pos}, next_phrase);
+                        phrase_tree.insert({next_phrase->lnode, next_phrase->rnode}, next_phrase);
                         update_interval_end = std::chrono::high_resolution_clock::now();
                         update_interval_time += update_interval_end - update_interval_start;
                         
@@ -1872,9 +1871,9 @@ void sourceBoundaries(int left_elem, int right_elem)
                 PhraseNode* exp_phrase = nullptr;
 
                 // First remove the offending entry from the tree
-                spdlog::trace("Removing ({},{}) from tree", rlist->nodes[curr_phrase->lnode].pos, rlist->nodes[curr_phrase->rnode].pos);
+                spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode, curr_phrase->rnode);
                 auto update_interval_start = std::chrono::high_resolution_clock::now();
-                phrase_tree.remove({rlist->nodes[curr_phrase->lnode].pos, rlist->nodes[curr_phrase->rnode].pos}, curr_phrase);
+                phrase_tree.remove({curr_phrase->lnode, curr_phrase->rnode}, curr_phrase);
                 auto update_interval_end = std::chrono::high_resolution_clock::now();
                 update_interval_time += update_interval_end - update_interval_start;
 
@@ -1935,7 +1934,7 @@ void sourceBoundaries(int left_elem, int right_elem)
                     int same_letter_count = 0;
                     if (left_elem == right_elem){
                         same_letter_count = 1;
-                        while (curr_phrase->lnode != -1 && curr_phrase->rnode != -1 && rlist->nodes[curr_phrase->lnode].pos < rlist->nodes[curr_phrase->rnode].pos && rlist->nodes[curr_phrase->lnode].val == right_elem)
+                        while (curr_phrase->lnode != -1 && curr_phrase->rnode != -1 && curr_phrase->lnode < curr_phrase->rnode && rlist->nodes[curr_phrase->lnode].val == right_elem)
                         {
                             same_letter_count++;
                             curr_phrase->lnode = rlist->findForwardRef(curr_phrase->lnode);
@@ -1962,7 +1961,7 @@ void sourceBoundaries(int left_elem, int right_elem)
                     int same_letter_count = 0;
                     if (left_elem == right_elem){
                         same_letter_count = 1;
-                        while (curr_phrase->lnode != -1 && curr_phrase->rnode != -1 && rlist->nodes[curr_phrase->lnode].pos < rlist->nodes[curr_phrase->rnode].pos && rlist->nodes[curr_phrase->lnode].val == right_elem)
+                        while (curr_phrase->lnode != -1 && curr_phrase->rnode != -1 && curr_phrase->lnode < curr_phrase->rnode && rlist->nodes[curr_phrase->lnode].val == right_elem)
                         {
                             same_letter_count++;
                             curr_phrase->lnode = rlist->findForwardRef(curr_phrase->lnode);
@@ -1989,7 +1988,7 @@ void sourceBoundaries(int left_elem, int right_elem)
                 bool deleteCurr = false;
                                     
                 // If non-explicit phrase is empty we delete it
-                if (curr_phrase->lnode == -1 || rlist->nodes[curr_phrase->lnode].pos > rlist->nodes[curr_phrase->rnode].pos){ 
+                if (curr_phrase->lnode == -1 || curr_phrase->lnode > curr_phrase->rnode){ 
                     deleteCurr = true;
                     next_phrase = curr_phrase->next;
                     exp_phrase = curr_phrase->prev;
@@ -1999,9 +1998,9 @@ void sourceBoundaries(int left_elem, int right_elem)
 
                 // Current phrase is not deleted
                 if (!deleteCurr){
-                    spdlog::trace("Adding ({},{}) to the tree", rlist->nodes[curr_phrase->lnode].pos, rlist->nodes[curr_phrase->rnode].pos);
+                    spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode, curr_phrase->rnode);
                     update_interval_start = std::chrono::high_resolution_clock::now();
-                    phrase_tree.insert({rlist->nodes[curr_phrase->lnode].pos, rlist->nodes[curr_phrase->rnode].pos}, curr_phrase);
+                    phrase_tree.insert({curr_phrase->lnode, curr_phrase->rnode}, curr_phrase);
                     update_interval_end = std::chrono::high_resolution_clock::now();
                     update_interval_time += update_interval_end - update_interval_start;
                     
@@ -2067,9 +2066,9 @@ void sourceBoundaries(int left_elem, int right_elem)
                 PhraseNode* exp_phrase = nullptr; 
                 
                 // First remove the offending entry from the tree
-                spdlog::trace("Removing ({},{}) from tree", rlist->nodes[curr_phrase->lnode].pos, rlist->nodes[curr_phrase->rnode].pos);
+                spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode, curr_phrase->rnode);
                 auto update_interval_start = std::chrono::high_resolution_clock::now();
-                phrase_tree.remove({rlist->nodes[curr_phrase->lnode].pos, rlist->nodes[curr_phrase->rnode].pos}, curr_phrase);
+                phrase_tree.remove({curr_phrase->lnode, curr_phrase->rnode}, curr_phrase);
                 auto update_interval_end = std::chrono::high_resolution_clock::now();
                 update_interval_time += update_interval_end - update_interval_start;
 
@@ -2129,7 +2128,7 @@ void sourceBoundaries(int left_elem, int right_elem)
                     int same_letter_count = 0;
                     if (left_elem == right_elem){
                         same_letter_count = 1;
-                        while(curr_phrase->rnode != -1 && curr_phrase->lnode != -1 && rlist->nodes[curr_phrase->lnode].pos < rlist->nodes[curr_phrase->rnode].pos && rlist->nodes[curr_phrase->rnode].val == left_elem)
+                        while(curr_phrase->rnode != -1 && curr_phrase->lnode != -1 && curr_phrase->lnode < curr_phrase->rnode && rlist->nodes[curr_phrase->rnode].val == left_elem)
                         {
                             same_letter_count++;
                             curr_phrase->rnode = rlist->findNearestRef(rlist->nodes[curr_phrase->rnode].prev);
@@ -2157,7 +2156,7 @@ void sourceBoundaries(int left_elem, int right_elem)
                         int same_letter_count = 0;
                         if (left_elem == right_elem){
                             same_letter_count = 1;
-                            while (curr_phrase->rnode != -1 && curr_phrase->lnode != -1 && rlist->nodes[curr_phrase->lnode].pos < rlist->nodes[curr_phrase->rnode].pos && rlist->nodes[curr_phrase->rnode].val == left_elem)
+                            while (curr_phrase->rnode != -1 && curr_phrase->lnode != -1 && curr_phrase->lnode < curr_phrase->rnode && rlist->nodes[curr_phrase->rnode].val == left_elem)
                             {
                                 same_letter_count++;
                                 curr_phrase->rnode = rlist->findNearestRef(rlist->nodes[curr_phrase->rnode].prev);
@@ -2175,7 +2174,7 @@ void sourceBoundaries(int left_elem, int right_elem)
                         int same_letter_count = 0;
                         if (left_elem == right_elem){
                             same_letter_count = 1;
-                            while (curr_phrase->rnode != -1 && curr_phrase->lnode != -1 && rlist->nodes[curr_phrase->lnode].pos < rlist->nodes[curr_phrase->rnode].pos && rlist->nodes[curr_phrase->rnode].val == left_elem)
+                            while (curr_phrase->rnode != -1 && curr_phrase->lnode != -1 && curr_phrase->lnode < curr_phrase->rnode && rlist->nodes[curr_phrase->rnode].val == left_elem)
                             {
                                 same_letter_count++;
                                 curr_phrase->rnode = rlist->findNearestRef(rlist->nodes[curr_phrase->rnode].prev);
@@ -2203,7 +2202,7 @@ void sourceBoundaries(int left_elem, int right_elem)
                 bool deleteCurr = false;
         
                 // If non-explicit phrase is empty we delete it
-                if (curr_phrase->rnode == -1 || rlist->nodes[curr_phrase->rnode].pos < rlist->nodes[curr_phrase->lnode].pos){
+                if (curr_phrase->rnode == -1 || curr_phrase->rnode < curr_phrase->lnode){
                     deleteCurr = true; 
                     prev_phrase = curr_phrase->prev;
                     exp_phrase = curr_phrase->next;
@@ -2213,9 +2212,9 @@ void sourceBoundaries(int left_elem, int right_elem)
 
                 // Curr phrase is not deleted
                 if (!deleteCurr){
-                    spdlog::trace("Adding ({},{}) to the tree", rlist->nodes[curr_phrase->lnode].pos, rlist->nodes[curr_phrase->rnode].pos);
+                    spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode, curr_phrase->rnode);
                     update_interval_start = std::chrono::high_resolution_clock::now();
-                    phrase_tree.insert({rlist->nodes[curr_phrase->lnode].pos, rlist->nodes[curr_phrase->rnode].pos}, curr_phrase);
+                    phrase_tree.insert({curr_phrase->lnode, curr_phrase->rnode}, curr_phrase);
                     update_interval_end = std::chrono::high_resolution_clock::now();
                     update_interval_time += update_interval_end - update_interval_start;
                     
@@ -2403,7 +2402,7 @@ void repair(std::ofstream& R, std::ofstream& C)
         if (hash_ranges.find(max_pair) != hash_ranges.end())
         {
             spdlog::trace("Going through the non-explicit phrases");
-            std::deque<int> ranges = hash_ranges[max_pair];
+            std::vector<int> ranges = hash_ranges[max_pair];
 
             auto nexp_start = std::chrono::high_resolution_clock::now();
             for (int curr_range : ranges)
@@ -2423,8 +2422,8 @@ void repair(std::ofstream& R, std::ofstream& C)
                 
                 // Query the tree
                 std::vector<PhraseNode*> phrase_results;
-                spdlog::trace("Pair to replace: ({},{})", rlist->nodes[lref].pos, rlist->nodes[rref].pos);
-                phrase_results = phrase_tree.findContained({rlist->nodes[lref].pos, rlist->nodes[rref].pos}); // Fully contained within interval
+                spdlog::trace("Pair to replace: ({},{})", lref, rref);
+                phrase_results = phrase_tree.findContained({lref, rref}); // Fully contained within interval
                 spdlog::trace("{} non-explicit phrases contain the pair to replace.", phrase_results.size());
                 for (int i = 0; i < phrase_results.size(); i++)
                 {
@@ -2434,11 +2433,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                     int leftleftElem;
                     int rightrightElem;
 
-                    int lRange = rlist->nodes[rlist->findNearestRef(phrase_results[i]->lnode)].pos;
-                    int rRange = rlist->nodes[rlist->findNearestRef(phrase_results[i]->rnode)].pos;
+                    int lRange = rlist->findNearestRef(phrase_results[i]->lnode);
+                    int rRange = rlist->findNearestRef(phrase_results[i]->rnode);
 
                     // If range fully contained within the edges
-                    if (lRange != rlist->nodes[lref].pos && rRange != rlist->nodes[rref].pos)
+                    if (lRange != lref && rRange != rref)
                     {
                         leftleftElem = rlist->nodes[rlist->findNearestRef(rlist->nodes[lref].prev)].val;
                         rightrightElem = rlist->nodes[rlist->findForwardRef(rref)].val;
@@ -2449,7 +2448,7 @@ void repair(std::ofstream& R, std::ofstream& C)
 
                     }
                     // If range touches the edges
-                    else if (lRange == rlist->nodes[lref].pos && rRange == rlist->nodes[rref].pos)
+                    else if (lRange == lref && rRange == rref)
                     {
                         // First update the hash table
                         start_hash[rlist->nodes[nexp_phrase->lnode].val].erase(nexp_phrase);
@@ -2466,10 +2465,10 @@ void repair(std::ofstream& R, std::ofstream& C)
                             pbound_it_map[nexp_phrase->prev] = std::prev(pbound_pairs[{leftleftElem, n}].end());
                         } 
                         else if (nexp_phrase->prev != nullptr && !nexp_phrase->prev->exp) {
-                            if (nexp_phrase->prev->rtmp == -1)
+                            if (!nexp_phrase->prev->rtmp)
                                 leftleftElem = rlist->nodes[rlist->findNearestRef(nexp_phrase->prev->rnode)].val;
                             else
-                                leftleftElem = nexp_phrase->prev->rtmp;
+                                leftleftElem = n;
                             decreaseFrequency(leftleftElem, leftElem);
                             increaseFrequency(leftleftElem, n);
                             // Update the phrase boundary hash tables
@@ -2478,7 +2477,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                             pbound_pairs[{leftleftElem, n}].push_back(nexp_phrase->prev);
                             pbound_it_map[nexp_phrase->prev] = std::prev(pbound_pairs[{leftleftElem, n}].end());
                         }
-                        nexp_phrase->ltmp = n;
+                        nexp_phrase->ltmp = true;
                         // First update the hash table
                         end_hash[rlist->nodes[nexp_phrase->rnode].val].erase(nexp_phrase);
                         end_hash[n].insert(nexp_phrase);
@@ -2494,10 +2493,10 @@ void repair(std::ofstream& R, std::ofstream& C)
                             pbound_it_map[nexp_phrase] = std::prev( pbound_pairs[{n, rightrightElem}].end());
                         } 
                         else if (nexp_phrase->next != nullptr && !nexp_phrase->next->exp) {
-                            if (nexp_phrase->next->ltmp == -1)
+                            if (!nexp_phrase->next->ltmp)
                                 rightrightElem = rlist->nodes[rlist->findNearestRef(nexp_phrase->next->lnode)].val;
                             else
-                                rightrightElem = nexp_phrase->next->ltmp;
+                                rightrightElem = n;
                             decreaseFrequency(rightElem, rightrightElem);
                             increaseFrequency(n, rightrightElem);
                             // Update the phrase boundary hash tables
@@ -2506,10 +2505,10 @@ void repair(std::ofstream& R, std::ofstream& C)
                             pbound_pairs[{n, rightrightElem}].push_back(nexp_phrase);
                             pbound_it_map[nexp_phrase] = std::prev( pbound_pairs[{n, rightrightElem}].end());
                         }
-                        nexp_phrase->rtmp = n;
+                        nexp_phrase->rtmp = true;
                     }
                     // If range touches left edge
-                    else if (lRange == rlist->nodes[lref].pos && rRange != rlist->nodes[rref].pos)
+                    else if (lRange == lref && rRange != rref)
                     {
                         // First update the hash table
                         start_hash[rlist->nodes[nexp_phrase->lnode].val].erase(nexp_phrase);
@@ -2526,11 +2525,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                             pbound_it_map[nexp_phrase->prev] = std::prev(pbound_pairs[{leftleftElem, n}].end());
                         } 
                         else if (nexp_phrase->prev != nullptr && !nexp_phrase->prev->exp) {
-                            if (nexp_phrase->prev->rtmp == -1)
+                            if (!nexp_phrase->prev->rtmp)
                                 leftleftElem = rlist->nodes[rlist->findNearestRef(nexp_phrase->prev->rnode)].val;
                             else
-                                leftleftElem = nexp_phrase->prev->rtmp;
-                            nexp_phrase->ltmp = n;
+                                leftleftElem = n;
+                            nexp_phrase->ltmp = true;
                             decreaseFrequency(leftleftElem, leftElem);
                             increaseFrequency(leftleftElem, n);
                             // Update the phrase boundary hash tables
@@ -2545,7 +2544,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                         increaseFrequency(n, rightrightElem);
                     }
                     // If range touches right edge
-                    else if (lRange != rlist->nodes[lref].pos && rRange == rlist->nodes[rref].pos)
+                    else if (lRange != lref && rRange == rref)
                     {
                         leftleftElem = rlist->nodes[rlist->findNearestRef(rlist->nodes[lref].prev)].val;
                         decreaseFrequency(leftleftElem, leftElem);
@@ -2566,11 +2565,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                             pbound_it_map[nexp_phrase] = std::prev(pbound_pairs[{n, rightrightElem}].end());
                         } 
                         else if (nexp_phrase->next != nullptr && !nexp_phrase->next->exp) {
-                            if (nexp_phrase->next->ltmp == -1)
+                            if (!nexp_phrase->next->ltmp)
                                 rightrightElem = rlist->nodes[rlist->findNearestRef(nexp_phrase->next->lnode)].val;
                             else
-                                rightrightElem = nexp_phrase->next->ltmp;
-                            nexp_phrase->rtmp = n;
+                                rightrightElem = n;
+                            nexp_phrase->rtmp = true;
                             decreaseFrequency(rightElem, rightrightElem);
                             increaseFrequency(n, rightrightElem);
                             // Update the phrase boundary hash tables
@@ -2592,12 +2591,12 @@ void repair(std::ofstream& R, std::ofstream& C)
                 if (llref != -1){
                     hash_pair.first = rlist->nodes[llref].val;
                     hash_pair.second = n;
-                    hash_ranges[hash_pair].push_back(rlist->nodes[llref].pos);
+                    hash_ranges[hash_pair].emplace_back(llref);
                 }
                 if (rrref != -1){
                     hash_pair.first = n;
                     hash_pair.second = rlist->nodes[rrref].val;
-                    hash_ranges[hash_pair].push_back(rlist->nodes[lref].pos);
+                    hash_ranges[hash_pair].emplace_back(lref);
                 }
                 auto hash_range_end = std::chrono::high_resolution_clock::now();
                 hash_range_time += hash_range_end - hash_range_start;
@@ -2606,14 +2605,14 @@ void repair(std::ofstream& R, std::ofstream& C)
                 // Update the tree (Phrase can never be deleted at this step)
                 for (int i = 0; i < phrase_results.size(); i++){
                     PhraseNode* nexp_phrase = phrase_results[i];
-                    nexp_phrase->ltmp = -1;
-                    nexp_phrase->rtmp = -1;
+                    nexp_phrase->ltmp = false;
+                    nexp_phrase->rtmp = false;
                     if (rlist->nodes[nexp_phrase->lnode].deleted || rlist->nodes[nexp_phrase->rnode].deleted){
                         auto update_interval_start = std::chrono::high_resolution_clock::now();
-                        phrase_tree.remove({rlist->nodes[nexp_phrase->lnode].pos, rlist->nodes[nexp_phrase->rnode].pos}, nexp_phrase);
+                        phrase_tree.remove({nexp_phrase->lnode, nexp_phrase->rnode}, nexp_phrase);
                         nexp_phrase->lnode = rlist->findNearestRef(nexp_phrase->lnode);
                         nexp_phrase->rnode = rlist->findNearestRef(nexp_phrase->rnode);
-                        phrase_tree.insert({rlist->nodes[nexp_phrase->lnode].pos, rlist->nodes[nexp_phrase->rnode].pos}, nexp_phrase);
+                        phrase_tree.insert({nexp_phrase->lnode, nexp_phrase->rnode}, nexp_phrase);
                         auto update_interval_end = std::chrono::high_resolution_clock::now();
                         update_interval_time += update_interval_end - update_interval_start;
                     }
