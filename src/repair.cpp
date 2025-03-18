@@ -2466,10 +2466,10 @@ void repair(std::ofstream& R, std::ofstream& C)
                             pbound_it_map[nexp_phrase->prev] = std::prev(pbound_pairs[{leftleftElem, n}].end());
                         } 
                         else if (nexp_phrase->prev != nullptr && !nexp_phrase->prev->exp) {
-                            if (nexp_phrase->prev->rtmp == -1)
+                            if (!nexp_phrase->prev->rtmp)
                                 leftleftElem = rlist->nodes[rlist->findNearestRef(nexp_phrase->prev->rnode)].val;
                             else
-                                leftleftElem = nexp_phrase->prev->rtmp;
+                                leftleftElem = n;
                             decreaseFrequency(leftleftElem, leftElem);
                             increaseFrequency(leftleftElem, n);
                             // Update the phrase boundary hash tables
@@ -2478,7 +2478,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                             pbound_pairs[{leftleftElem, n}].push_back(nexp_phrase->prev);
                             pbound_it_map[nexp_phrase->prev] = std::prev(pbound_pairs[{leftleftElem, n}].end());
                         }
-                        nexp_phrase->ltmp = n;
+                        nexp_phrase->ltmp = true;
                         // First update the hash table
                         end_hash[rlist->nodes[nexp_phrase->rnode].val].erase(nexp_phrase);
                         end_hash[n].insert(nexp_phrase);
@@ -2494,10 +2494,10 @@ void repair(std::ofstream& R, std::ofstream& C)
                             pbound_it_map[nexp_phrase] = std::prev( pbound_pairs[{n, rightrightElem}].end());
                         } 
                         else if (nexp_phrase->next != nullptr && !nexp_phrase->next->exp) {
-                            if (nexp_phrase->next->ltmp == -1)
+                            if (!nexp_phrase->next->ltmp)
                                 rightrightElem = rlist->nodes[rlist->findNearestRef(nexp_phrase->next->lnode)].val;
                             else
-                                rightrightElem = nexp_phrase->next->ltmp;
+                                rightrightElem = n;
                             decreaseFrequency(rightElem, rightrightElem);
                             increaseFrequency(n, rightrightElem);
                             // Update the phrase boundary hash tables
@@ -2506,7 +2506,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                             pbound_pairs[{n, rightrightElem}].push_back(nexp_phrase);
                             pbound_it_map[nexp_phrase] = std::prev( pbound_pairs[{n, rightrightElem}].end());
                         }
-                        nexp_phrase->rtmp = n;
+                        nexp_phrase->rtmp = true;
                     }
                     // If range touches left edge
                     else if (lRange == lref && rRange != rref)
@@ -2526,11 +2526,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                             pbound_it_map[nexp_phrase->prev] = std::prev(pbound_pairs[{leftleftElem, n}].end());
                         } 
                         else if (nexp_phrase->prev != nullptr && !nexp_phrase->prev->exp) {
-                            if (nexp_phrase->prev->rtmp == -1)
+                            if (!nexp_phrase->prev->rtmp)
                                 leftleftElem = rlist->nodes[rlist->findNearestRef(nexp_phrase->prev->rnode)].val;
                             else
-                                leftleftElem = nexp_phrase->prev->rtmp;
-                            nexp_phrase->ltmp = n;
+                                leftleftElem = n;
+                            nexp_phrase->ltmp = true;
                             decreaseFrequency(leftleftElem, leftElem);
                             increaseFrequency(leftleftElem, n);
                             // Update the phrase boundary hash tables
@@ -2566,11 +2566,11 @@ void repair(std::ofstream& R, std::ofstream& C)
                             pbound_it_map[nexp_phrase] = std::prev(pbound_pairs[{n, rightrightElem}].end());
                         } 
                         else if (nexp_phrase->next != nullptr && !nexp_phrase->next->exp) {
-                            if (nexp_phrase->next->ltmp == -1)
+                            if (!nexp_phrase->next->ltmp)
                                 rightrightElem = rlist->nodes[rlist->findNearestRef(nexp_phrase->next->lnode)].val;
                             else
-                                rightrightElem = nexp_phrase->next->ltmp;
-                            nexp_phrase->rtmp = n;
+                                rightrightElem = n;
+                            nexp_phrase->rtmp = true;
                             decreaseFrequency(rightElem, rightrightElem);
                             increaseFrequency(n, rightrightElem);
                             // Update the phrase boundary hash tables
@@ -2606,8 +2606,8 @@ void repair(std::ofstream& R, std::ofstream& C)
                 // Update the tree (Phrase can never be deleted at this step)
                 for (int i = 0; i < phrase_results.size(); i++){
                     PhraseNode* nexp_phrase = phrase_results[i];
-                    nexp_phrase->ltmp = -1;
-                    nexp_phrase->rtmp = -1;
+                    nexp_phrase->ltmp = false;
+                    nexp_phrase->rtmp = false;
                     if (rlist->nodes[nexp_phrase->lnode].deleted || rlist->nodes[nexp_phrase->rnode].deleted){
                         auto update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.remove({nexp_phrase->lnode, nexp_phrase->rnode}, nexp_phrase);
