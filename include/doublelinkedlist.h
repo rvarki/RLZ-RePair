@@ -92,123 +92,110 @@ class RefLinkedList
 class PhraseLinkedList 
 {
     private:
-        PhraseNode* head;
-        PhraseNode* tail;
+        int head;
+        int tail;
         int size;
 
     public:
-        PhraseLinkedList() : size(0), head(nullptr), tail(nullptr) {}
+        std::vector<PhraseNode> phrases;
 
-        ~PhraseLinkedList() {
-            while (head != nullptr) {
-                PhraseNode* temp = head;
-                head = head->next;
-                delete temp;
-            }
+        PhraseLinkedList(int capacity) : head(-1), tail(-1), size(0) {
+            phrases.reserve(2 * capacity);
         }
 
-        PhraseNode* getHead(){ return head; }
-        PhraseNode* getTail(){ return tail; }
+        int getHead(){ return head; }
+        int getTail(){ return tail; }
         int getSize(){ return size; }
 
-        // Insert before specified PhraseNode
-        PhraseNode* insert(PhraseNode* nextNode, std::list<int> ilist)
+        // Insert before specified PhraseNode (using index)
+        int insert(int nextNodeIndex, std::list<int> ilist)
         {
-            if (!nextNode) return nullptr; // Invalid node
-            PhraseNode* newNode = new PhraseNode(ilist);
-            newNode->next = nextNode;
-            newNode->prev = nextNode->prev;
-            if (nextNode->prev) {
-                nextNode->prev->next = newNode;
+            if (nextNodeIndex == -1) return -1; // Invalid node index
+            PhraseNode newNode(ilist);
+            phrases.emplace_back(newNode);
+            int newNodeIndex = phrases.size() - 1;
+
+            // Setting new node's prev and next
+            phrases[newNodeIndex].next = nextNodeIndex;
+            phrases[newNodeIndex].prev = phrases[nextNodeIndex].prev;
+
+            // Updating the previous node's next pointer
+            if (phrases[nextNodeIndex].prev != -1) {
+                phrases[phrases[nextNodeIndex].prev].next = newNodeIndex;
             } else {
-                head = newNode; 
+                head = newNodeIndex;  // Update head if the new node is inserted at the front
             }
-            nextNode->prev = newNode;
+
+            // Updating the next node's prev pointer
+            phrases[nextNodeIndex].prev = newNodeIndex;
+
             size++;
-            return newNode;
+            return newNodeIndex;
         }
 
-        // Delete at specified PhraseNode
-        PhraseNode* remove(PhraseNode* currNode) 
+        // Lazy Delete at specified PhraseNode (using index)
+        int remove(int currNodeIndex) 
         {
-            if (!currNode) return nullptr; // Invalid node
+            if (currNodeIndex == -1) return -1; // Invalid node index
 
-            if (currNode->prev) {
-                currNode->prev->next = currNode->next;
+            int prevNodeIndex = phrases[currNodeIndex].prev;
+            int nextNodeIndex = phrases[currNodeIndex].next;
+
+            if (prevNodeIndex != -1) {
+                phrases[prevNodeIndex].next = nextNodeIndex;
             } else {
-                head = currNode->next; // Update head if removing the first node
+                head = nextNodeIndex; // Update head if removing the first node
             }
 
-            if (currNode->next) {
-                currNode->next->prev = currNode->prev;
+            if (nextNodeIndex != -1) {
+                phrases[nextNodeIndex].prev = prevNodeIndex;
             } else {
-                tail = currNode->prev; // Update tail if removing the last node
+                tail = prevNodeIndex; // Update tail if removing the last node
             }
 
-            PhraseNode* prevNode = currNode->prev; // Store previous node before deleting
-            PhraseNode* forwardNode = currNode->next; // Store previous node before deleting
-            size--;
-            delete currNode;
-            if (prevNode != nullptr)
-                return prevNode; // Return the prev node to allow easy iteration
-            else
-                return forwardNode; // If prev node is nullptr then give the next node
+            //phrases.erase(phrases.begin() + currNodeIndex); // 
+            //size--;
+
+            // Return the index of the previous node or the next node if the previous is -1
+            return (prevNodeIndex != -1) ? prevNodeIndex : nextNodeIndex;
         }
 
-        // Insert at the front
-        PhraseNode* push_front(std::list<int> ilist) {
-            PhraseNode* newNode = new PhraseNode(ilist);
-            if (!head) {
-                head = tail = newNode;
+        // Insert at the back using list<int>
+        int push_back(std::list<int> ilist) 
+        {
+            PhraseNode newNode(ilist);
+            phrases.emplace_back(newNode);
+            int newNodeIndex = phrases.size() - 1;
+            
+            if (tail == -1) {
+                head = tail = newNodeIndex;
             } else {
-                newNode->next = head;
-                head->prev = newNode;
-                head = newNode;
+                phrases[newNodeIndex].prev = tail;
+                phrases[tail].next = newNodeIndex;
+                tail = newNodeIndex;
             }
+
             size++;
-            return newNode;
+            return newNodeIndex;
         }
 
-        // Insert at the front
-        PhraseNode* push_front(int lnode, int rnode) {
-            PhraseNode* newNode = new PhraseNode(lnode, rnode);
-            if (!head) {
-                head = tail = newNode;
-            } else {
-                newNode->next = head;
-                head->prev = newNode;
-                head = newNode;
-            }
-            size++;
-            return newNode;
-        }
+        // Insert at the back using lnode, rnode
+        int push_back(int lnode, int rnode) 
+        {
+            PhraseNode newNode(lnode, rnode);
+            phrases.push_back(newNode);
+            int newNodeIndex = phrases.size() - 1;
 
-        // Insert at the back
-        PhraseNode* push_back(std::list<int> ilist) {
-            PhraseNode* newNode = new PhraseNode(ilist);
-            if (!tail) {
-                head = tail = newNode;
+            if (tail == -1) {
+                head = tail = newNodeIndex;
             } else {
-                tail->next = newNode;
-                newNode->prev = tail;
-                tail = newNode;
+                phrases[newNodeIndex].prev = tail;
+                phrases[tail].next = newNodeIndex;
+                tail = newNodeIndex;
             }
-            size++;
-            return newNode;
-        }
 
-         // Insert at the back
-        PhraseNode* push_back(int lnode, int rnode) {
-            PhraseNode* newNode = new PhraseNode(lnode, rnode);
-            if (!tail) {
-                head = tail = newNode;
-            } else {
-                tail->next = newNode;
-                newNode->prev = tail;
-                tail = newNode;
-            }
             size++;
-            return newNode;
+            return newNodeIndex;
         }
 };
 
