@@ -73,6 +73,7 @@ In this section, we demonstrate how to run the tool using a small toy dataset an
 ./rlz-repair -r ../data/travis/travis_ref.txt -s ../data/travis/travis_seq.txt -v 2
 ```
 | Verbosity Level | Output Details |
+| --- | --- |
 | -v 0 (default)  | Size of the RLZ parse and RePair compression. |
 | -v 1 | Phrase size statistics, memory usage at start, max pair chosen each iteration, timing information. |
 | -v 2 | Prints out the phrases each iteration and more. |
