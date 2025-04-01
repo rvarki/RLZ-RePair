@@ -2,116 +2,88 @@
 #define DOUBLE_LINKED_LIST_H
 
 #include <iostream>
+#include <vector>
 #include "node.h"
 
 class RefLinkedList 
 {
     private:
-        RefNode* head;
-        RefNode* tail;
+        int head;
+        int tail;
         int size;
 
     public:
-        RefLinkedList() : size(0), head(nullptr), tail(nullptr) {}
+        std::vector<RefNode> nodes;
 
-        ~RefLinkedList() {
-            while (head != nullptr) {
-                RefNode* temp = head;
-                head = head->forward;
-                delete temp;
-            }
+        RefLinkedList(int capacity) : size(0), head(-1), tail(-1){
+            nodes.reserve(capacity);
         }
 
-        RefNode* getHead(){ return head; }
-        RefNode* getTail(){ return tail; }
-
+        // Get the head and tail of linked list array
+        int getHead(){ return head; }
+        int getTail(){ return tail; }
         // Get size of reference
-        int getSize(){
-            return size;
-        }
+        int getSize(){ return size; }
 
         // Insert at the back
-        RefNode* push_back(int value) {
-            RefNode* newNode = new RefNode(value);
-            newNode->pos = ++size - 1; // Updates size but node pos zero-index
-            if (!tail) {
-                head = tail = newNode;
+        int push_back(int value) {
+            if (size >= nodes.capacity()){ // Overflow guard
+                std::cerr << "ERROR: Tried inserting more elements than allowed into the reference linked-list array!" << std::endl;
+                return -1; 
+            } 
+            nodes.emplace_back(value); // Updates size but node pos zero-index
+            if (tail == -1) {
+                head = tail = 0;
             } else {
-                tail->next = newNode;
-                tail->forward = newNode;
-                newNode->prev = tail;
-                tail = newNode;
+                nodes[tail].next = size;
+                nodes[size].prev = tail;
+                tail = size;
             }
-            return newNode;
+            return size++; // Return the pos in the vector of the most recent element pushed back
         }
 
         // Replace pair and cleanup
-        void replacePair(int val, RefNode* left, RefNode* right)
+        void replacePair(int val, int leftIdx, int rightIdx)
         {
-            left->val = val;
-            right->deleted = true;
-            right->prev = left;   
-            if (right->next != nullptr){
-                left->next = right->next;
-                right->next->prev = left;
+            nodes[leftIdx].val = val;
+            nodes[rightIdx].deleted = true;
+            nodes[rightIdx].prev = leftIdx;   
+            if (nodes[rightIdx].next != -1){
+                nodes[leftIdx].next = nodes[rightIdx].next;
+                nodes[nodes[rightIdx].next].prev = leftIdx;
             }
         }
-
-        // // Find position in reference
-        // RefNode* findPos(int pos)
-        // {
-        //     RefNode* ref_elem = head;
-        //     while (ref_elem != nullptr)
-        //     {
-        //         if (ref_elem->pos == pos)
-        //             return ref_elem;
-        //         else
-        //             ref_elem = ref_elem->next;
-        //     }   
-        //     return nullptr;
-        // }
 
         // If the phrase endpoint on ref is deleted, 
         // then find the new ref endpoint
-        RefNode* findNearestRef(RefNode* endpoint) 
+        int findNearestRef(int idx) 
         {
-            if (endpoint == nullptr){
-                return nullptr;
+            while (idx != -1 && nodes[idx].deleted){
+                idx = nodes[idx].prev;
             }
-            if (!(endpoint->deleted))
-                return endpoint;
-            else{
-                while(endpoint->deleted){
-                    endpoint = endpoint->prev;
-                }
-                return endpoint;
-            }
+            return idx;
         }
 
         // If we need to find the forward adjacent RefNode
-        RefNode* findForwardRef(RefNode* ref_elem)
+        int findForwardRef(int idx)
         {
-            ref_elem = ref_elem->next;
-            while (ref_elem != nullptr && ref_elem->deleted){
-                ref_elem = ref_elem->next;
+            idx = nodes[idx].next;
+            while (idx != -1 && nodes[idx].deleted){
+                idx = nodes[idx].next;
             }
-            return ref_elem;
+            return idx;
         }
 
         void printForward() const {
-            RefNode* temp = head;
-            while (temp != nullptr) {
-                std::cout << temp->val << " ";
-                temp = temp->next;
+            for (int i = head; i != -1; i = nodes[i].next) {
+                std::cout << nodes[i].val << " ";
             }
             std::cout << std::endl;
         }
 
         void printBackward() const {
-            RefNode* temp = tail;
-            while (temp != nullptr) {
-                std::cout << temp->val << " ";
-                temp = temp->prev;
+            for (int i = tail; i != -1; i = nodes[i].prev) {
+                std::cout << nodes[i].val << " ";
             }
             std::cout << std::endl;
         }
@@ -198,7 +170,7 @@ class PhraseLinkedList
         }
 
         // Insert at the front
-        PhraseNode* push_front(RefNode* lnode, RefNode* rnode) {
+        PhraseNode* push_front(int lnode, int rnode) {
             PhraseNode* newNode = new PhraseNode(lnode, rnode);
             if (!head) {
                 head = tail = newNode;
@@ -226,7 +198,7 @@ class PhraseLinkedList
         }
 
          // Insert at the back
-        PhraseNode* push_back(RefNode* lnode, RefNode* rnode) {
+        PhraseNode* push_back(int lnode, int rnode) {
             PhraseNode* newNode = new PhraseNode(lnode, rnode);
             if (!tail) {
                 head = tail = newNode;
