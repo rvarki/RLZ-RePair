@@ -259,6 +259,35 @@ void printHashRanges()
 }
 
 /**
+ * @brief Checks whether the hash table of bi-grams in the reference contain all the entries it is supposed to
+ * @return void
+ */
+void checkHashRanges()
+{
+    printRef();
+    int next = rlist->findNearestRef(rlist->getTail());
+    while (rlist->nodes[next].prev != -1)
+    {
+        int curr = rlist->findNearestRef(rlist->nodes[next].prev);
+        int left_elem = rlist->nodes[curr].val;
+        int right_elem = rlist->nodes[next].val;
+        std::pair<int,int> max_pair = {left_elem,right_elem};
+        spdlog::trace("Current bi-gram: ({},{})", printSymbol(left_elem), printSymbol(right_elem));
+        if (hash_ranges.find(max_pair) != hash_ranges.end()){
+            std::vector<int> entries = hash_ranges[max_pair];
+            auto it = std::find(entries.begin(), entries.end(), curr);
+            if (it == entries.end()){
+                spdlog::error("Position is missing from hash ranges");
+            }
+        }
+        else{
+            spdlog::error("Pair is missing from hash ranges");
+        }
+        next = curr;
+    }
+}
+
+/**
  * @brief Prints specific phrase. Debug purposes only.
  * @param[in] curr_phrase [PhraseNode*] The pointer of the phrase to be printed
  * @return void
