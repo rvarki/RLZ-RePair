@@ -2350,7 +2350,36 @@ void repair(std::ofstream& R, std::ofstream& C)
     auto build_interval_end = std::chrono::high_resolution_clock::now();
     build_interval_time += build_interval_end - build_interval_start;
 
-    oid = extractMax(&Heap);
+    // Replace extractMax function for ordered choice of max pair replacement
+    // Initialize
+    int maxRecordIdx = -1;
+    int maxRecordFreq = 0;
+    int maxRecordLeft = -1;
+    int maxRecordRight = -1;
+    for (int i = 0; i < Rec.size; i++)
+    {
+        int recordFreq = Rec.records[i].freq;
+        int recordLeft = Rec.records[i].pair.left;
+        int recordRight = Rec.records[i].pair.right;
+        // Keep track of the max frequency pair that has the highest value pair 
+        if (recordFreq > maxRecordFreq ||
+            (recordFreq == maxRecordFreq && recordLeft > maxRecordLeft) || 
+            (recordFreq == maxRecordFreq && recordLeft == maxRecordLeft && recordRight > maxRecordRight))
+        {
+            maxRecordIdx = i;
+            maxRecordFreq = recordFreq;
+            maxRecordLeft = recordLeft;
+            maxRecordRight = recordRight; 
+        }
+    }
+    // Set the oid to be Record id of the max freq highest value pair 
+    oid = maxRecordIdx;
+    // Reset the variables
+    maxRecordIdx = -1;
+    maxRecordFreq = 0;
+    maxRecordLeft = -1;
+    maxRecordRight = -1;
+
     while (oid != -1)
     {
         size_t prev_mem = malloc_count_current();
@@ -2889,8 +2918,30 @@ void repair(std::ofstream& R, std::ofstream& C)
         // Remove frequency 1 records
         purgeHeap(&Heap);
 
-        // Get next value in max heap
-        oid = extractMax(&Heap);
+        // Replace extractMax function for ordered choice of max pair replacement
+        for (int i = 0; i < Rec.size; i++)
+        {
+            int recordFreq = Rec.records[i].freq;
+            int recordLeft = Rec.records[i].pair.left;
+            int recordRight = Rec.records[i].pair.right;
+            // Keep track of the max frequency pair that has the highest value pair 
+            if (recordFreq > maxRecordFreq ||
+                (recordFreq == maxRecordFreq && recordLeft > maxRecordLeft) || 
+                (recordFreq == maxRecordFreq && recordLeft == maxRecordLeft && recordRight > maxRecordRight))
+            {
+                maxRecordIdx = i;
+                maxRecordFreq = recordFreq;
+                maxRecordLeft = recordLeft;
+                maxRecordRight = recordRight; 
+            }
+        }
+        // Set the oid to be Record id of the max freq highest value pair 
+        oid = maxRecordIdx;
+        // Reset the variables
+        maxRecordIdx = -1;
+        maxRecordFreq = 0;
+        maxRecordLeft = -1;
+        maxRecordRight = -1;
 
         // Update n
         n++;
