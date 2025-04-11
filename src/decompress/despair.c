@@ -79,7 +79,7 @@ void main(int argc, char **argv)
   char *text;
   FILE *Tf, *Rf, *Cf;
   int i, len, c;
-  long long int u;
+  unsigned long long int u;
   struct stat s;
   if (argc != 2)
   {
