@@ -32,7 +32,7 @@ Chile. Blanco Encalada 2120, Santiago, Chile. gnavarro@dcc.uchile.cl
 #include <unistd.h>
 #include "basics.h"
 
-int u; // |text| and later current |C| with gaps
+unsigned long long int u; // |text| and later current |C| with gaps
 
 int *C; // compressed text
 
@@ -78,7 +78,8 @@ void main(int argc, char **argv)
   char fout[1024];
   char *text;
   FILE *Tf, *Rf, *Cf;
-  int i, len, c, u;
+  int i, len, c;
+  long long int u;
   struct stat s;
   if (argc != 2)
   {
@@ -163,7 +164,7 @@ void main(int argc, char **argv)
     exit(1);
   }
   fprintf(stderr, "DesPair succeeded\n\n");
-  fprintf(stderr, "   Original chars: %i\n", u);
+  fprintf(stderr, "   Original chars: %llu\n", u);
   fprintf(stderr, "   Number of rules: %i\n", n);
   fprintf(stderr, "   Compressed sequence length: %i\n", c);
   fprintf(stderr, "   Maximum rule depth: %i\n", maxdepth);
