@@ -2,7 +2,7 @@
 
 ## Description
 
-RLZ-RePair efficiently compresses a target sequence file using a smaller reference file by first applying RLZ compression, then performing RePair compression on the RLZ parse. The algorithm aims to minimize the number of replacements that would occur if RePair were run directly on the sequence file by instead encoding the reference file as much as possible, since RLZ parse entries directly reference it.
+RLZ-RePair efficiently compresses a target sequence file using a smaller reference file by first applying RLZ compression [1], then performing RePair compression [2] on the RLZ parse. The algorithm aims to minimize the number of replacements that would occur if RePair were run directly on the sequence file by instead encoding the reference file as much as possible, since RLZ parse entries directly reference it. The software borrows some code from RePair/BigRePair [3].
 
 ## Algorithmic Workflow
 
@@ -58,7 +58,7 @@ After building the project, an executable named rlz-repair will be created in th
 ./rlz-repair -r [reference file] -s [file to compress] [options] 
 ```
 
-### Small Example Usage
+### Small Example
 
 In this section, we demonstrate how to run the tool using a small toy dataset and explore the different options available to the user. We highlight three (non-exclusive) ways to execute the tool from the build directory.
 
@@ -165,3 +165,24 @@ Decompression Options:
   -d COMPRESS_PREFIX, --decompress COMPRESS_PREFIX
                         Prefix of the compressed files to decompress.
 ```
+
+## Authors
+
+### Theoretical Results:
+- Travis Gagie
+- Christina Boucher
+- Rahul Varki
+
+### Implementation:
+- Rahul Varki
+
+### Experiments:
+- Rahul Varki
+
+## References
+
+[1] Kuruppu, S., Puglisi, S. J., & Zobel, J. (2010, October). Relative Lempel-Ziv compression of genomes for large-scale storage and retrieval. In International Symposium on String Processing and Information Retrieval (pp. 201-206). Berlin, Heidelberg: Springer Berlin Heidelberg.
+
+[2] Larsson, N. J., & Moffat, A. (2000). Off-line dictionary-based compression. Proceedings of the IEEE, 88(11), 1722-1732
+
+[3] Gagie, T., I, T., Manzini, G., Navarro, G., Sakamoto, H., & Takabatake, Y. (2019, October). Rpair: rescaling RePair with rsync. In International Symposium on String Processing and Information Retrieval (pp. 35-44). Cham: Springer International Publishing.
