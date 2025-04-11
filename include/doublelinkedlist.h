@@ -1,3 +1,10 @@
+/*
+* RLZ-RePair - RePair compression using RLZ parse
+* Copyright (C) 2025-current Rahul Varki
+* Licensed under the GNU General Public License v3 or later.
+* See the LICENSE file or <https://www.gnu.org/licenses/> for details.
+*/
+
 #ifndef DOUBLE_LINKED_LIST_H
 #define DOUBLE_LINKED_LIST_H
 

@@ -1,3 +1,10 @@
+/*
+* RLZ-RePair - RePair compression using RLZ parse
+* Copyright (C) 2025-current Rahul Varki
+* Licensed under the GNU General Public License v3 or later.
+* See the LICENSE file or <https://www.gnu.org/licenses/> for details.
+*/
+
 #include <CLI11.hpp>
 #include "spdlog/spdlog.h"
 #include "spdlog/stopwatch.h"
@@ -280,7 +287,7 @@ void printPhrase(PhraseNode* curr_phrase)
         spdlog::trace("Phrase (Not explicit): {}", content);
     }
     else{
-        for (unsigned int i : curr_phrase->content){
+        for (int i : curr_phrase->content){
             content += printSymbol(i) + " ";
         }
         spdlog::trace("Phrase (explicit): \033[1;31m{}\033[0m", content);
@@ -1287,12 +1294,12 @@ void phraseBoundaries(int left_elem, int right_elem)
                     next_phrase->rnode = rlist->findNearestRef(next_phrase->rnode);
 
                     // First remove the offending entries in the tree.
-                    spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode, curr_phrase->rnode);
+                    // spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode, curr_phrase->rnode);
                     auto update_interval_start = std::chrono::high_resolution_clock::now();
                     phrase_tree.remove({curr_phrase->lnode, curr_phrase->rnode}, curr_phrase);
                     auto update_interval_end = std::chrono::high_resolution_clock::now();
                     update_interval_time += update_interval_end - update_interval_start;
-                    spdlog::trace("Removing ({},{}) from tree", next_phrase->lnode, next_phrase->rnode);
+                    // spdlog::trace("Removing ({},{}) from tree", next_phrase->lnode, next_phrase->rnode);
                     update_interval_start = std::chrono::high_resolution_clock::now();
                     phrase_tree.remove({next_phrase->lnode, next_phrase->rnode}, next_phrase);
                     update_interval_end = std::chrono::high_resolution_clock::now();
@@ -1384,12 +1391,12 @@ void phraseBoundaries(int left_elem, int right_elem)
                     // Update the tree with the new entries
                     // If both the current and next phrase still exist
                     if (!deleteCurr && !deleteNext){
-                        spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode, curr_phrase->rnode);
+                        // spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode, curr_phrase->rnode);
                         update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.insert({curr_phrase->lnode, curr_phrase->rnode}, curr_phrase);
                         update_interval_end = std::chrono::high_resolution_clock::now();
                         update_interval_time += update_interval_end - update_interval_start;
-                        spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode, next_phrase->rnode);
+                        // spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode, next_phrase->rnode);
                         update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.insert({next_phrase->lnode, next_phrase->rnode}, next_phrase);
                         update_interval_end = std::chrono::high_resolution_clock::now();
@@ -1410,7 +1417,7 @@ void phraseBoundaries(int left_elem, int right_elem)
                     }
                     // If the current phrase is deleted but the next phrase still exists
                     else if (deleteCurr && !deleteNext){
-                        spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode, next_phrase->rnode);
+                        // spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode, next_phrase->rnode);
                         update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.insert({next_phrase->lnode, next_phrase->rnode}, next_phrase);
                         update_interval_end = std::chrono::high_resolution_clock::now();
@@ -1439,7 +1446,7 @@ void phraseBoundaries(int left_elem, int right_elem)
                     }
                     // If current phrase is not deleted but next phrase is deleted
                     else if (!deleteCurr && deleteNext){
-                        spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode, curr_phrase->rnode);
+                        // spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode, curr_phrase->rnode);
                         update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.insert({curr_phrase->lnode, curr_phrase->rnode}, curr_phrase);
                         update_interval_end = std::chrono::high_resolution_clock::now();
@@ -1553,7 +1560,7 @@ void phraseBoundaries(int left_elem, int right_elem)
                     curr_phrase->rnode = rlist->findNearestRef(curr_phrase->rnode);
 
                     // First remove the offending entry from the tree
-                    spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode, curr_phrase->rnode);
+                    // spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode, curr_phrase->rnode);
                     auto update_interval_start = std::chrono::high_resolution_clock::now();
                     phrase_tree.remove({curr_phrase->lnode, curr_phrase->rnode}, curr_phrase);
                     auto update_interval_end = std::chrono::high_resolution_clock::now();
@@ -1617,7 +1624,7 @@ void phraseBoundaries(int left_elem, int right_elem)
 
                     // If the current phrase is not deleted
                     if (!deleteCurr){
-                        spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode, curr_phrase->rnode);
+                        // spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode, curr_phrase->rnode);
                         update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.insert({curr_phrase->lnode, curr_phrase->rnode}, curr_phrase);
                         update_interval_end = std::chrono::high_resolution_clock::now();
@@ -1672,7 +1679,7 @@ void phraseBoundaries(int left_elem, int right_elem)
                     next_phrase->rnode = rlist->findNearestRef(next_phrase->rnode);
 
                     // First remove the offending entry from the tree
-                    spdlog::trace("Removing ({},{}) from tree", next_phrase->lnode, next_phrase->rnode);
+                    // spdlog::trace("Removing ({},{}) from tree", next_phrase->lnode, next_phrase->rnode);
                     auto update_interval_start = std::chrono::high_resolution_clock::now();
                     phrase_tree.remove({next_phrase->lnode, next_phrase->rnode}, next_phrase);
                     auto update_interval_end = std::chrono::high_resolution_clock::now();
@@ -1736,7 +1743,7 @@ void phraseBoundaries(int left_elem, int right_elem)
 
                     // If the next phrase is not deleted
                     if (!deleteNext){
-                        spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode, next_phrase->rnode);
+                        // spdlog::trace("Adding ({},{}) to the tree", next_phrase->lnode, next_phrase->rnode);
                         update_interval_start = std::chrono::high_resolution_clock::now();
                         phrase_tree.insert({next_phrase->lnode, next_phrase->rnode}, next_phrase);
                         update_interval_end = std::chrono::high_resolution_clock::now();
@@ -1871,7 +1878,7 @@ void sourceBoundaries(int left_elem, int right_elem)
                 PhraseNode* exp_phrase = nullptr;
 
                 // First remove the offending entry from the tree
-                spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode, curr_phrase->rnode);
+                // spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode, curr_phrase->rnode);
                 auto update_interval_start = std::chrono::high_resolution_clock::now();
                 phrase_tree.remove({curr_phrase->lnode, curr_phrase->rnode}, curr_phrase);
                 auto update_interval_end = std::chrono::high_resolution_clock::now();
@@ -1998,7 +2005,7 @@ void sourceBoundaries(int left_elem, int right_elem)
 
                 // Current phrase is not deleted
                 if (!deleteCurr){
-                    spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode, curr_phrase->rnode);
+                    // spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode, curr_phrase->rnode);
                     update_interval_start = std::chrono::high_resolution_clock::now();
                     phrase_tree.insert({curr_phrase->lnode, curr_phrase->rnode}, curr_phrase);
                     update_interval_end = std::chrono::high_resolution_clock::now();
@@ -2066,7 +2073,7 @@ void sourceBoundaries(int left_elem, int right_elem)
                 PhraseNode* exp_phrase = nullptr; 
                 
                 // First remove the offending entry from the tree
-                spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode, curr_phrase->rnode);
+                // spdlog::trace("Removing ({},{}) from tree", curr_phrase->lnode, curr_phrase->rnode);
                 auto update_interval_start = std::chrono::high_resolution_clock::now();
                 phrase_tree.remove({curr_phrase->lnode, curr_phrase->rnode}, curr_phrase);
                 auto update_interval_end = std::chrono::high_resolution_clock::now();
@@ -2212,7 +2219,7 @@ void sourceBoundaries(int left_elem, int right_elem)
 
                 // Curr phrase is not deleted
                 if (!deleteCurr){
-                    spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode, curr_phrase->rnode);
+                    // spdlog::trace("Adding ({},{}) to the tree", curr_phrase->lnode, curr_phrase->rnode);
                     update_interval_start = std::chrono::high_resolution_clock::now();
                     phrase_tree.insert({curr_phrase->lnode, curr_phrase->rnode}, curr_phrase);
                     update_interval_end = std::chrono::high_resolution_clock::now();
@@ -2275,9 +2282,9 @@ void sourceBoundaries(int left_elem, int right_elem)
  */
 void decreaseFrequency(int left, int right)
 {
-    if (verbosity == 2){
-        spdlog::trace("Decrease frequency: ({},{})", printSymbol(left), printSymbol(right));
-    }
+    // if (verbosity == 2){
+    //     spdlog::trace("Decrease frequency: ({},{})", printSymbol(left), printSymbol(right));
+    // }
     Tpair new_pair;
     new_pair.left = left;
     new_pair.right = right;
@@ -2297,9 +2304,9 @@ void decreaseFrequency(int left, int right)
  */
 void increaseFrequency(int left, int right)
 {
-    if (verbosity == 2){
-        spdlog::trace("Increase frequency: ({},{})", printSymbol(left), printSymbol(right));
-    }
+    // if (verbosity == 2){
+    //     spdlog::trace("Increase frequency: ({},{})", printSymbol(left), printSymbol(right));
+    // }
     Tpair new_pair;
     new_pair.left = left;
     new_pair.right = right;
@@ -2905,9 +2912,9 @@ void repair(std::ofstream& R, std::ofstream& C)
             spdlog::trace("*** Information after bi-gram replacement ***");
             printRef();
             printPhraseList();
-            //printAllRecords();
-            //checkPhraseBoundaries();
-            //checkSourceBoundaries();
+            printAllRecords();
+            checkPhraseBoundaries();
+            checkSourceBoundaries();
             checkExpPairs();
             checkHeap();
             //phrase_tree.printTree();
@@ -2932,15 +2939,15 @@ void repair(std::ofstream& R, std::ofstream& C)
             }
             while (!nexp_stack.empty()) {
                 c++;
-                unsigned int i = nexp_stack.top();
-                C.write(reinterpret_cast<const char*>(&i), sizeof(unsigned int));
+                int i = nexp_stack.top();
+                C.write(reinterpret_cast<const char*>(&i), sizeof(int));
                 nexp_stack.pop();
             }
         }
         else{
-            for (unsigned int i : curr_phrase->content){
+            for (int i : curr_phrase->content){
                 c++;
-                C.write(reinterpret_cast<const char*>(&i), sizeof(unsigned int));
+                C.write(reinterpret_cast<const char*>(&i), sizeof(int));
             }
         }
         curr_phrase = curr_phrase->next;
