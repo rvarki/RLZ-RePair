@@ -280,7 +280,7 @@ void printPhrase(PhraseNode* curr_phrase)
         spdlog::trace("Phrase (Not explicit): {}", content);
     }
     else{
-        for (unsigned int i : curr_phrase->content){
+        for (int i : curr_phrase->content){
             content += printSymbol(i) + " ";
         }
         spdlog::trace("Phrase (explicit): \033[1;31m{}\033[0m", content);
@@ -2932,15 +2932,15 @@ void repair(std::ofstream& R, std::ofstream& C)
             }
             while (!nexp_stack.empty()) {
                 c++;
-                unsigned int i = nexp_stack.top();
-                C.write(reinterpret_cast<const char*>(&i), sizeof(unsigned int));
+                int i = nexp_stack.top();
+                C.write(reinterpret_cast<const char*>(&i), sizeof(int));
                 nexp_stack.pop();
             }
         }
         else{
-            for (unsigned int i : curr_phrase->content){
+            for (int i : curr_phrase->content){
                 c++;
-                C.write(reinterpret_cast<const char*>(&i), sizeof(unsigned int));
+                C.write(reinterpret_cast<const char*>(&i), sizeof(int));
             }
         }
         curr_phrase = curr_phrase->next;
