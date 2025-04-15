@@ -2926,6 +2926,8 @@ void repair(std::ofstream& R, std::ofstream& C)
 
     // Write the final integers to the C file
     PhraseNode* curr_phrase = plist.getHead();
+    uint64_t num_non_explicit = 0;
+    uint64_t num_explicit = 0;
     while(curr_phrase != nullptr)
     {
         if (!(curr_phrase->exp)){
@@ -2941,6 +2943,7 @@ void repair(std::ofstream& R, std::ofstream& C)
                 c++;
                 int i = nexp_stack.top();
                 C.write(reinterpret_cast<const char*>(&i), sizeof(int));
+                num_non_explicit++;
                 nexp_stack.pop();
             }
         }
@@ -2948,10 +2951,13 @@ void repair(std::ofstream& R, std::ofstream& C)
             for (int i : curr_phrase->content){
                 c++;
                 C.write(reinterpret_cast<const char*>(&i), sizeof(int));
+                num_explicit++;
             }
         }
         curr_phrase = curr_phrase->next;
     }
+    spdlog::debug("Non-explicit characters in C file: {}", num_non_explicit);
+    spdlog::debug("Explicit characters in C file: {}", num_explicit);
 }
 
 
