@@ -91,7 +91,7 @@ Each verbosity level includes all the information from the preceding levels.
 
 Ensures non-explicit phrases are at least 2 characters long to reduce fragmentation. Smaller non-explicit phrases are converted to explicit phrases.
 
-All threee commands will produce the following files in the in the data/travis directory: `travis_seq.txt.rlz`, `travis_seq.txt.C`, and `travis_seq.txt.R`. 
+All three commands will produce the following files in the in the data/travis directory: `travis_seq.txt.rlz`, `travis_seq.txt.C`, and `travis_seq.txt.R`. 
 
 - `.rlz` file: contains the (pos,len) entries produced by the RLZ code. 
 - `.C` file contains the compressed sequence file after being RePaired. 
