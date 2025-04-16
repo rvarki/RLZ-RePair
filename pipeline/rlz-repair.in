@@ -29,6 +29,7 @@ dirname = os.path.dirname(os.path.abspath(__file__))
 rlz_exe = "@RLZ@"
 repair_exe = "@REPAIR@"
 despair_exe = "@DESPAIR@"
+standard_repair_exe = "@STANDARD_REPAIR@"
 
 def execute_command(args, command):
     if (args.log_file is not None):
