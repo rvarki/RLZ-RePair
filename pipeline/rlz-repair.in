@@ -52,6 +52,12 @@ def runRePair(args):
     
     execute_command(args, command)
 
+def runGonzaloRePair(args):
+    command = ""
+    command += standard_repair_exe + " " + args.seq_file + ".C" + " " + str(args.mem)
+
+    execute_command(args, command)
+
 def runDesPair(args):
     command = ""
     command += despair_exe + " " + args.compress_prefix
@@ -75,7 +81,10 @@ def main():
     compression_group.add_argument('-i', '--iter', help = "The number of RePair iterations to be performed before early termination.", type = non_negative_or_minus_one, default = -1)
     compression_group.add_argument('-t', '--threads', help = "Number of threads for RLZ section (default = 1).", type = int, default = 1)
     compression_group.add_argument('-v', '--verbosity', help='Set verbosity level (0 = none, 1 = basic, 2 = detailed).', type=int, choices=[0, 1, 2], default=0)
-    compression_group.add_argument('--standard', type=lambda x: x.lower() in ['true', '1', 'yes'], help="Perform Gonzalo's standard RePair on RLZ-RePair's compressed string. Should be used with -i option.", default=False)
+
+    gonzalo_group = parser.add_argument_group("Gonzalo's RePair Options")
+    gonzalo_group.add_argument('--standard', help="Runs Gonzalo's standard RePair on the RLZ-RePair compressed string. Requires the -i option.", action='store_true')
+    gonzalo_group.add_argument('--mem', help="Maximum memory available to Gonzalo's standard RePair (MB). Must be used with --standard flag.", type = int)
 
     decompression_group = parser.add_argument_group("Decompression Options")
     decompression_group.add_argument('-d', '--decompress', help = "Prefix of the compressed files to decompress.", type = str, dest="compress_prefix")
@@ -91,18 +100,23 @@ def main():
     else:
         print("############ STARTING RUNNING RLZ ############")
         if (args.ref_file is None or args.seq_file is None):
-            print("A file needs to be specified for both -r and -s to run RLZ-RePair")
+            print("Error: A file needs to be specified for both -r and -s to run RLZ-RePair")
             parser.print_help()
+            sys.exit(1)
         else:
             runRLZ(args)
         print("############ FINISHED RUNNING RLZ ############")
         print("############ STARING RUNNING REPAIR ############")
         runRePair(args)
         print("############ FINISHED RUNNING REPAIR ############")
-        if (args.standard):
+        if (args.standard and args.mem is not None):
             print("############ STARTING Gonzalo's REPAIR ############")
-
+            runGonzaloRePair(args)
             print("############ FINISHED Gonzalo's REPAIR ############")
+        elif (args.standard and args.mem is None):
+            print("Error: --mem must be specified when using --standard.")
+            parser.print_help()
+            sys.exit(1)
 
 if __name__ == '__main__':
     main()
