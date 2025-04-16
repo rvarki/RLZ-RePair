@@ -36,7 +36,7 @@ relong u; // |text| and later current |C| with gaps
 
 int *C; // compressed text
 
-int c;  // real |C|
+int c; // real |C|
 
 int alph; // max used terminal symbol
 
@@ -48,96 +48,115 @@ char *ff;
 FILE *f;
 int maxdepth = 0;
 
-int expand (int i, int d)
+int expand(int i, int d)
 
-   { int ret = 1;
-     while (i >= alph)
-       { ret += expand(R[i-alph].left,d+1);
-         i = R[i-alph].right; d++;
-       }
-     if (fwrite(&i,sizeof(int),1,f) != 1)
-	{ fprintf (stderr,"Error: cannot write file %s\n",ff);
-	  exit(1);
-	}
-     if (d > maxdepth) maxdepth = d;
-     return ret;
-   }
+{
+  int ret = 1;
+  while (i >= alph)
+  {
+    ret += expand(R[i - alph].left, d + 1);
+    i = R[i - alph].right;
+    d++;
+  }
+  if (fwrite(&i, sizeof(int), 1, f) != 1)
+  {
+    fprintf(stderr, "Error: cannot write file %s\n", ff);
+    exit(1);
+  }
+  if (d > maxdepth)
+    maxdepth = d;
+  return ret;
+}
 
-void main (int argc, char **argv)
+void main(int argc, char **argv)
 
-   { char fname[1024];
-     char *text;
-     FILE *Tf,*Rf,*Cf;
-     int i,len,c,u;
-     struct stat s;
-     if (argc != 2)
-	{ fprintf (stderr,"Usage: %s <filename>\n"
-			  "Decompresses <filename> from its .C and .R "
-			  "extensions\n"
-			  "This is a version for integer sequences\n",argv[0]);
-	  exit(1);
-	}
-     strcpy(fname,argv[1]);
-     strcat(fname,".R");
-     if (stat (fname,&s) != 0)
-	{ fprintf (stderr,"Error: cannot stat file %s\n",fname);
-	  exit(1);
-	}
-     len = s.st_size;
-     Rf = fopen (fname,"r");
-     if (Rf == NULL)
-	{ fprintf (stderr,"Error: cannot open file %s for reading\n",fname);
-	  exit(1);
-	}
-     if (fread(&alph,sizeof(int),1,Rf) != 1)
-	{ fprintf (stderr,"Error: cannot read file %s\n",fname);
-	  exit(1);
-	}
-     n = (len-sizeof(int))/sizeof(Tpair);
-     R = (void*)malloc(n*sizeof(Tpair));
-     if (fread(R,sizeof(Tpair),n,Rf) != n)
-	{ fprintf (stderr,"Error: cannot read file %s\n",fname);
-	  exit(1);
-	}
-     fclose(Rf);
+{
+  char fname[1024];
+  char *text;
+  FILE *Tf, *Rf, *Cf;
+  int i, len, c, u;
+  struct stat s;
+  if (argc != 2)
+  {
+    fprintf(stderr, "Usage: %s <filename>\n"
+                    "Decompresses <filename> from its .C and .R "
+                    "extensions\n"
+                    "This is a version for integer sequences\n",
+            argv[0]);
+    exit(1);
+  }
+  strcpy(fname, argv[1]);
+  strcat(fname, ".R");
+  if (stat(fname, &s) != 0)
+  {
+    fprintf(stderr, "Error: cannot stat file %s\n", fname);
+    exit(1);
+  }
+  len = s.st_size;
+  Rf = fopen(fname, "r");
+  if (Rf == NULL)
+  {
+    fprintf(stderr, "Error: cannot open file %s for reading\n", fname);
+    exit(1);
+  }
+  if (fread(&alph, sizeof(int), 1, Rf) != 1)
+  {
+    fprintf(stderr, "Error: cannot read file %s\n", fname);
+    exit(1);
+  }
+  n = (len - sizeof(int)) / sizeof(Tpair);
+  R = (void *)malloc(n * sizeof(Tpair));
+  if (fread(R, sizeof(Tpair), n, Rf) != n)
+  {
+    fprintf(stderr, "Error: cannot read file %s\n", fname);
+    exit(1);
+  }
+  fclose(Rf);
 
-     strcpy(fname,argv[1]);
-     strcat(fname,".C");
-     if (stat (fname,&s) != 0)
-	{ fprintf (stderr,"Error: cannot stat file %s\n",fname);
-	  exit(1);
-	}
-     c = len = s.st_size/sizeof(int);
-     Cf = fopen (fname,"r");
-     if (Cf == NULL)
-	{ fprintf (stderr,"Error: cannot open file %s for reading\n",fname);
-	  exit(1);
-	}
-     Tf = fopen (argv[1],"w");
-     if (Tf == NULL)
-	{ fprintf (stderr,"Error: cannot open file %s for writing\n",argv[1]);
-	  exit(1);
-	}
-     u = 0; f = Tf; ff = argv[1];
-     for (;len>0;len--)
-	{ if (fread(&i,sizeof(int),1,Cf) != 1)
-	     { fprintf (stderr,"Error: cannot read file %s\n",fname);
-	       exit(1);
-	     }
-	  u += expand(i,0);
-	}
-     fclose(Cf);
-     if (fclose(Tf) != 0)
-	{ fprintf (stderr,"Error: cannot close file %s\n",argv[1]);
-	  exit(1);
-	}
-     fprintf (stderr,"DesPair succeeded\n\n");
-     fprintf (stderr,"   Original ints: %i\n",u);
-     fprintf (stderr,"   Number of rules: %i\n",n-alph);
-     fprintf (stderr,"   Compressed sequence length: %i\n",c);
-     fprintf (stderr,"   Maximum rule depth: %i\n",maxdepth);
-     fprintf (stderr,"   Compression ratio: %0.2f%%\n",
-                        (4.0*(n-alph)+((n-alph)+c)*(float)blog(n-1))/(u*blog(alph-1))*100.0);
-     exit(0);
-   }
-
+  strcpy(fname, argv[1]);
+  strcat(fname, ".C");
+  if (stat(fname, &s) != 0)
+  {
+    fprintf(stderr, "Error: cannot stat file %s\n", fname);
+    exit(1);
+  }
+  c = len = s.st_size / sizeof(int);
+  Cf = fopen(fname, "r");
+  if (Cf == NULL)
+  {
+    fprintf(stderr, "Error: cannot open file %s for reading\n", fname);
+    exit(1);
+  }
+  Tf = fopen(argv[1], "w");
+  if (Tf == NULL)
+  {
+    fprintf(stderr, "Error: cannot open file %s for writing\n", argv[1]);
+    exit(1);
+  }
+  u = 0;
+  f = Tf;
+  ff = argv[1];
+  for (; len > 0; len--)
+  {
+    if (fread(&i, sizeof(int), 1, Cf) != 1)
+    {
+      fprintf(stderr, "Error: cannot read file %s\n", fname);
+      exit(1);
+    }
+    u += expand(i, 0);
+  }
+  fclose(Cf);
+  if (fclose(Tf) != 0)
+  {
+    fprintf(stderr, "Error: cannot close file %s\n", argv[1]);
+    exit(1);
+  }
+  fprintf(stderr, "DesPair succeeded\n\n");
+  fprintf(stderr, "   Original ints: %i\n", u);
+  fprintf(stderr, "   Number of rules: %i\n", n - alph);
+  fprintf(stderr, "   Compressed sequence length: %i\n", c);
+  fprintf(stderr, "   Maximum rule depth: %i\n", maxdepth);
+  fprintf(stderr, "   Compression ratio: %0.2f%%\n",
+          (4.0 * (n - alph) + ((n - alph) + c) * (float)blog(n - 1)) / (u * blog(alph - 1)) * 100.0);
+  exit(0);
+}
