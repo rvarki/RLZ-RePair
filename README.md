@@ -18,15 +18,15 @@ The characters represented by the RLZ parse are stored in two types of phrases:
 
 At the start of the RePair section, all pairs in the RLZ parse are represented as non-explicit phrases (unless the user specifies otherwise).
 
-If the most frequently occurring bi-gram is fully contained within the non-explicit phrases, the replacement only needs to occur in the reference, minimizing the total number of operations.
+If the most frequently occurring bigram is fully contained within the non-explicit phrases, the replacement only needs to occur in the reference, minimizing the total number of operations.
 
-If the most frequent bi-gram spans the **phrase boundary** between two consecutive non-explicit phrases, the end of the first phrase and the start of the second are cleaved, and an explicit phrase containing the removed bi-gram is created between them. If the bi-gram spans a non-explicit phrase and an explicit phrase, only the start or end character of the non-explicit phrase is removed and added to the explicit phrase.
+If the most frequent bigram spans the **phrase boundary** between two consecutive non-explicit phrases, the end of the first phrase and the start of the second are cleaved, and an explicit phrase containing the removed bigram is created between them. If the bigram spans a non-explicit phrase and an explicit phrase, only the start or end character of the non-explicit phrase is removed and added to the explicit phrase.
 
-If the most frequent bi-gram occurs in the reference and either the start or end character of a non-explicit phrase partially overlaps with this position on the reference, this is called a **source boundary** condition. In this case, the start or end character of the non-explicit phrase must be removed and added to an adjacent explicit phrase.
+If the most frequent bigram occurs in the reference and either the start or end character of a non-explicit phrase partially overlaps with this position on the reference, this is called a **source boundary** condition. In this case, the start or end character of the non-explicit phrase must be removed and added to an adjacent explicit phrase.
 
-**Time and memory bottlenecks in the software arise from managing explicit phrases.**
+**Time and memory bottlenecks in the software mostly arise from managing explicit phrases.**
 
-**For optimal performance, choose a reference that is highly similar to the sequence file so that the RLZ phrases are long.**
+**For optimal performance, choose a reference that is highly similar to the sequence file so that the RLZ phrases are long and fewer in number.**
 
 For more detailed information on the algorithm and software. See the paper.
 
@@ -113,7 +113,7 @@ There should be no output from this command which indicates that the files are i
 
 ### DNA Example
 
-This is a larger example dataset used to verify the correctness of the software and assist in debugging. We will demonstrate its usage while applying some of the options explained in the previous section.
+This is a larger example dataset used to verify the correctness of the software and assist with debugging. We first demonstrate typical usage, followed by an introduction to another feature built into the tool.
 
 1. Run RLZ-RePair 
 
@@ -132,9 +132,32 @@ This is a larger example dataset used to verify the correctness of the software 
 diff ../data/dna/dna_seq.txt ../data/dna/dna_seq.txt.out
 ```
 
+Another feature we added is the ability to switch to Gonzalo's version of standard RePair partway through the RLZ-RePair version through early termination. We found in our experiments that standard RePair is typically faster than RLZ-RePair (at the cost of consuming more memory). To combine the best of both worlds, we give the option to users to first compress part of the file with RLZ-RePair until it can fit in memory for standard RePair to be ran.
+
+To enable this option, the following parameters must be set:
+
+- --standard: Flag to enable standard RePair.
+- -i [num]: The number of iterations that RLZ-RePair should run before early termination.
+- --mem [num]: The amount of memory available to standard RePair (MB)
+
+1. First run RLZ-RePair and then standard RePair
+```
+./rlz-repair -r ../data/dna/dna_ref.txt -s ../data/dna/dna_seq.txt -v1 --standard --mem 5000 -i 1000
+```
+2. Decompression
+
+```
+./rlz-repair -d ../data/dna/dna_seq.txt 
+```
+
+3. Verify correctness
+```
+diff ../data/dna/dna_seq.txt ../data/dna/dna_seq.txt.out
+```
+
 ## Usage
 ```
-usage: rlz-repair [-h] [-r REF_FILE] [-s SEQ_FILE] [-m MIN] [-t THREADS] [-v {0,1,2}] [-d COMPRESS_PREFIX] [--log LOG_FILE]
+usage: rlz-repair [-h] [-r REF_FILE] [-s SEQ_FILE] [-m MIN] [-i ITER] [-t THREADS] [-v {0,1,2}] [--standard] [--mem MEM] [-d COMPRESS_PREFIX] [--log LOG_FILE]
 
  ____  _     _____     ____      ____       _      
 |  _ \| |   |__  /    |  _ \ ___|  _ \ __ _(_)_ __ 
@@ -156,10 +179,15 @@ Compression Options:
   -s SEQ_FILE, --seq SEQ_FILE
                         The sequence file to compress.
   -m MIN, --min MIN     The minimum phrase length threshold for an RLZ phrase to be stored as a non-explicit phrase.
+  -i ITER, --iter ITER  The number of RePair iterations to be performed before early termination.
   -t THREADS, --threads THREADS
-                        Number of threads for RLZ section (default 1).
+                        Number of threads for RLZ section (default = 1).
   -v {0,1,2}, --verbosity {0,1,2}
                         Set verbosity level (0 = none, 1 = basic, 2 = detailed).
+
+Gonzalo's RePair Options:
+  --standard            Runs Gonzalo's standard RePair on the RLZ-RePair compressed string. Requires the -i option.
+  --mem MEM             Maximum memory available to Gonzalo's standard RePair (MB). Must be used with --standard flag.
 
 Decompression Options:
   -d COMPRESS_PREFIX, --decompress COMPRESS_PREFIX
