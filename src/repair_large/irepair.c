@@ -69,6 +69,15 @@ int MB;
 
 int did0 = 0; // did prepare0 or not
 
+// Added: Remove .Ctmp suffix from filename after reading the compressed C file from RLZ-RePair
+void remove_suffix(char *str, const char *suffix) {
+    size_t len = strlen(str);
+    size_t slen = strlen(suffix);
+    if (len >= slen && strcmp(str + len - slen, suffix) == 0) {
+        str[len - slen] = '\0';
+    }
+}
+
 // first pass, inplace on text, up to having sufficient space
 
 void prepare0(relong len)
@@ -227,8 +236,9 @@ relong repair0(relong len, FILE *R)
 	Trecord *rec, *orec;
 	Tpair pair;
 	int left, right;
-	if (fwrite(&alph, sizeof(int), 1, R) != 1)
-		return -1;
+	// Do not write alph since RLZ-RePair already wrote it
+	// if (fwrite(&alph, sizeof(int), 1, R) != 1) 
+	// 	return -1;
 	if (PRNL)
 		printf("--- first stage, n = %lli\n", len);
 	if (PRNC)
@@ -568,8 +578,11 @@ void main(int argc, char **argv)
 	}
 	fclose(Tf);
 	strcpy(fname, argv[1]);
+	// Change fname back to original name
+	const char *suffix = ".Ctmp";
+	remove_suffix(fname, suffix);
 	strcat(fname, ".R");
-	Rf = fopen(fname, "w");
+	Rf = fopen(fname, "a"); // Change to append 
 	if (Rf == NULL)
 	{
 		fprintf(stderr, "Error: cannot open file %s for writing\n", fname);
@@ -594,6 +607,8 @@ void main(int argc, char **argv)
 		exit(1);
 	}
 	strcpy(fname, argv[1]);
+	// Change fname back to original name
+	remove_suffix(fname, suffix);
 	strcat(fname, ".C");
 	Cf = fopen(fname, "w");
 	if (Cf == NULL)

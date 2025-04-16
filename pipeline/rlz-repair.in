@@ -7,6 +7,7 @@
 # See the LICENSE file or <https://www.gnu.org/licenses/> for details.
 #
 
+import os
 import os.path
 import argparse
 import subprocess
@@ -54,7 +55,7 @@ def runRePair(args):
 
 def runGonzaloRePair(args):
     command = ""
-    command += standard_repair_exe + " " + args.seq_file + ".C" + " " + str(args.mem)
+    command += standard_repair_exe + " " + args.seq_file + ".Ctmp" + " " + str(args.mem)
 
     execute_command(args, command)
 
@@ -111,7 +112,12 @@ def main():
         print("############ FINISHED RUNNING REPAIR ############")
         if (args.standard and args.mem is not None):
             print("############ STARTING Gonzalo's REPAIR ############")
+            temp_file = args.seq_file + ".Ctmp"
+            os.rename(args.seq_file + ".C", temp_file)
             runGonzaloRePair(args)
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+                print(f"Removed temp file: {temp_file}")
             print("############ FINISHED Gonzalo's REPAIR ############")
         elif (args.standard and args.mem is None):
             print("Error: --mem must be specified when using --standard.")
