@@ -47,7 +47,7 @@ def runRLZ(args):
 
 def runRePair(args):
     command = ""
-    command += repair_exe + " " + "-r " + args.ref_file + " " + "-p " + args.seq_file + ".rlz" + " " + "-m " + str(args.min) + " " + "-v " + str(args.verbosity)
+    command += repair_exe + " " + "-r " + args.ref_file + " " + "-p " + args.seq_file + ".rlz" + " " + "-m " + str(args.min) + " " + "-i " + str(args.iter) + " " + "-v " + str(args.verbosity)
     
     execute_command(args, command)
 
@@ -71,8 +71,10 @@ def main():
     compression_group.add_argument('-s', '--seq', help = "The sequence file to compress.", type = str, dest="seq_file")
     #compression_group.add_argument('-b', '--bit', help = "Do the RLZ compression at bit level", action='store_true')
     compression_group.add_argument('-m', '--min', help = "The minimum phrase length threshold for an RLZ phrase to be stored as a non-explicit phrase.", type = non_negative_or_minus_one, default = -1)
-    compression_group.add_argument('-t', '--threads', help = "Number of threads for RLZ section (default 1).", type = int, default = 1)
+    compression_group.add_argument('-i', '--iter', help = "The number of RePair iterations to be performed before early termination.", type = non_negative_or_minus_one, default = -1)
+    compression_group.add_argument('-t', '--threads', help = "Number of threads for RLZ section (default = 1).", type = int, default = 1)
     compression_group.add_argument('-v', '--verbosity', help='Set verbosity level (0 = none, 1 = basic, 2 = detailed).', type=int, choices=[0, 1, 2], default=0)
+    compression_group.add_argument('--standard', type=lambda x: x.lower() in ['true', '1', 'yes'], help="Perform Gonzalo's standard RePair on RLZ-RePair's compressed string. Should be used with -i option.", default=False)
 
     decompression_group = parser.add_argument_group("Decompression Options")
     decompression_group.add_argument('-d', '--decompress', help = "Prefix of the compressed files to decompress.", type = str, dest="compress_prefix")
@@ -96,6 +98,10 @@ def main():
         print("############ STARING RUNNING REPAIR ############")
         runRePair(args)
         print("############ FINISHED RUNNING REPAIR ############")
+        if (args.standard):
+            print("############ STARTING Gonzalo's REPAIR ############")
+
+            print("############ FINISHED Gonzalo's REPAIR ############")
 
 if __name__ == '__main__':
     main()

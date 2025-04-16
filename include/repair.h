@@ -53,7 +53,7 @@ void phraseBoundaries(int left_elem, int right_elem);
 void sourceBoundaries(int left_elem, int right_elem);
 void decreaseFrequency(int left_elem, int right_elem);
 void increaseFrequency(int left_elem, int right_elem);
-void repair(std::ofstream& R, std::ofstream& C);
+void repair(std::ofstream& R, std::ofstream& C, int num_iter);
 
 
 #endif  // REPAIR_H
