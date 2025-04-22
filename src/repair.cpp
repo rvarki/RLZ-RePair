@@ -2330,10 +2330,11 @@ void increaseFrequency(int left, int right)
  * 
  * @param [in] R [std::ofstream&] The file where we will write the rules.
  * @param [in] C [std::ofstream&] The file where we will write the compressed text.
+ * @param [in] num_iter [int] The number of iterations of RePair replacement to perform before early termination (default -1 which means do all)
  * 
  * @return void
  */
-void repair(std::ofstream& R, std::ofstream& C)
+void repair(std::ofstream& R, std::ofstream& C, int num_iter)
 {
     int start_size = psize;
 
@@ -2364,6 +2365,11 @@ void repair(std::ofstream& R, std::ofstream& C)
         Trecord* orec = &Rec.records[oid];
         // When max frequency is 1, RePair ends.
         if (orec->freq == 1){
+            break;
+        }
+
+        // Number of rules is the number of iterations
+        if (n - alpha == num_iter){
             break;
         }
 
@@ -2967,11 +2973,13 @@ int main(int argc, char *argv[])
     std::string ref_file;
     std::string rlz_parse;
     int min_threshold = -1;
+    int num_iter = -1;
     std::string version = "Version: 1.0.0";
 
     app.add_option("-r,--ref", ref_file, "The reference file used to create the RLZ parse")->configurable()->required();
     app.add_option("-p,--parse", rlz_parse, "The RLZ parse of the sequence file (.rlz)")->configurable()->required();
     app.add_option("-m,--min", min_threshold, "The minimum phrase length threshold for an RLZ phrase to be stored as a non-explicit phrase.")->default_val(-1);
+    app.add_option("-i,--iter", num_iter, "The number of iterations of RePair to perform before early termination.")->default_val(-1);
     app.add_option("-v,--verbosity", verbosity, "Set verbosity level (0 = none, 1 = basic, 2 = detailed)")->default_val(0);
     app.set_version_flag("--version", version);
     app.footer("Example usage:\n"
@@ -3068,7 +3076,7 @@ int main(int argc, char *argv[])
     create_heap_time += create_heap_end - create_heap_start;
 
     // RePair
-    repair(R, C);
+    repair(R, C, num_iter);
 
     auto total_time_end = std::chrono::high_resolution_clock::now();
     spdlog::debug("Total Prepare Reference Time (s): {:.6f}", std::chrono::duration<double>(prepare_ref_time).count());

@@ -111,6 +111,18 @@ target_link_libraries(repair PRIVATE malloc_count dl)
 target_include_directories(repair PUBLIC ${PROJECT_INCLUDE_DIR} ${PROJECT_INCLUDE_DIR}/repair ${THIRDPARTY_INCLUDE_DIR} ${THIRDPARTY_INCLUDE_DIR}/CLI ${THIRDPARTY_INCLUDE_DIR}/malloc_count)
 set(REPAIR ${CMAKE_CURRENT_BINARY_DIR}/bin/repair CACHE FILEPATH "Path to the repair executable" FORCE)
 
+# Gonzalo's Integer RePair
+add_executable(gonzalo_repair
+               ${PROJECT_SRC_DIR}/repair_large/irepair.c
+               ${PROJECT_SRC_DIR}/repair_large/array.c
+               ${PROJECT_SRC_DIR}/repair_large/hash.c
+               ${PROJECT_SRC_DIR}/repair_large/heap.c
+               ${PROJECT_SRC_DIR}/repair_large/records.c
+               ${PROJECT_SRC_DIR}/repair_large/basics.c)
+
+target_include_directories(gonzalo_repair PUBLIC ${PROJECT_INCLUDE_DIR}/repair_large)
+set(STANDARD_REPAIR ${CMAKE_CURRENT_BINARY_DIR}/bin/gonzalo_repair CACHE FILEPATH "Path to Gonzalo's repair executable" FORCE)
+
 # Despair
 add_executable(despair
                ${PROJECT_SRC_DIR}/decompress/despair.c
