@@ -36,7 +36,7 @@ For more detailed information on the algorithm and software. See the paper.
 - GCC 9+
 - C++17-compatible compiler.
 - OpenMP
-- Python3
+- Python3 (v3.7 or higher)
 
 ## Getting Started
 
