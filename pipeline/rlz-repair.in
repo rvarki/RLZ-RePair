@@ -27,10 +27,12 @@ using a reference file.
 version = "@VERSION@"
 dirname = os.path.dirname(os.path.abspath(__file__))
 
-rlz_exe = "@RLZ@"
-repair_exe = "@REPAIR@"
-despair_exe = "@DESPAIR@"
-standard_repair_exe = "@STANDARD_REPAIR@"
+INSTALL_BIN_DIR = dirname
+
+rlz_exe = f"{INSTALL_BIN_DIR}/rlz"
+repair_exe = f"{INSTALL_BIN_DIR}/repair"
+despair_exe = f"{INSTALL_BIN_DIR}/despair"
+standard_repair_exe = f"{INSTALL_BIN_DIR}/gonzalo_repair"
 
 def execute_command(args, command):
     if (args.log_file is not None):
