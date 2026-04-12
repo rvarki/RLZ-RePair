@@ -24,11 +24,18 @@ If the most frequent bigram spans the **phrase boundary** between two consecutiv
 
 If the most frequent bigram occurs in the reference and either the start or end character of a non-explicit phrase partially overlaps with this position on the reference, this is called a **source boundary** condition. In this case, the start or end character of the non-explicit phrase must be removed and added to an adjacent explicit phrase.
 
-**Time and memory bottlenecks in the software mostly arise from managing explicit phrases.**
-
 **For optimal performance, choose a reference that is highly similar to the sequence file so that the RLZ phrases are long and fewer in number.**
 
-For more detailed information on the algorithm and software. See the paper.
+**This implementation imposes the constraint that the alphabet of the text to be compressed must be a subset of that of the reference text.**
+
+For more details on the algorithm and software, see our paper accepted at CPM 2026.
+
+```
+Efficient Grammar Compression via RLZ-based RePair
+Rahul Varki, Travis Gagie, Christina Boucher
+bioRxiv 2025.07.22.666196; doi: https://doi.org/10.1101/2025.07.22.666196
+
+```
 
 ## Prerequisites
 
