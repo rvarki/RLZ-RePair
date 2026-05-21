@@ -142,13 +142,13 @@ uint64_t calculateParseBytes(std::ifstream& pfile)
 {
     int count = 1;
     uint64_t seq_orig_size = 0;
-    uint64_t len;
+    int len;
     // Skip the first uint64_t bytes
     pfile.seekg(sizeof(uint64_t), std::ios::beg);
-    while (pfile.read(reinterpret_cast<char*>(&len), sizeof(uint64_t))) {
-        // Every second uint64_t bytes encode for the length of the phrase
+    while (pfile.read(reinterpret_cast<char*>(&len), sizeof(int))) {
+        // Every second int bytes encode for the length of the phrase
         if (count % 2 == 0){
-            seq_orig_size = seq_orig_size + len;
+            seq_orig_size = seq_orig_size + static_cast<uint64_t>(len);
         }
         count++;
     }
@@ -818,7 +818,8 @@ void createMaxHeap(std::ifstream& pfile)
     Hash = createHash(256 * 256, &Rec);
     assocRecords(&Rec, &Hash, &Heap, NULL);
 
-    uint64_t num_pairs, pos, len;
+    uint64_t num_pairs;
+    int pos, len;
     pair.left = -1;
     pair.right = -1;
     RefNode rnode;
@@ -831,11 +832,11 @@ void createMaxHeap(std::ifstream& pfile)
     for (uint64_t i = 0; i < 2 * num_pairs; i++)
     {
         if (i % 2 == 0){
-            pfile.read(reinterpret_cast<char*>(&pos), sizeof(uint64_t));
+            pfile.read(reinterpret_cast<char*>(&pos), sizeof(int));
         }
         else
         {
-            pfile.read(reinterpret_cast<char*>(&len), sizeof(uint64_t));
+            pfile.read(reinterpret_cast<char*>(&len), sizeof(int));
             for (uint64_t j = 0; j < len; j++)
             {
                 if (j == 0){
@@ -883,8 +884,6 @@ void createMaxHeap(std::ifstream& pfile)
  * A non-explicit phrase stores left and right endpoints that references the reference.
  * Range for each phrase is [left,right]
  * 
- * TODO: At some point have to address the uint64_t that RLZ writes. Either have to change RLZ or RLZ-RePair. Not good to force uint64_t to int
- * 
  * Also populate hash tables for phrase boundary between phrases
  * and hash tables storing the start and end char of each non-explicit phrase 
  * 
@@ -895,8 +894,8 @@ void createMaxHeap(std::ifstream& pfile)
 
 void populatePhrases(std::ifstream& pfile, int min_threshold)
 {
-    uint64_t rlz_num_pairs, rlz_pos, rlz_len;
-    int num_pairs, pos, len; 
+    uint64_t num_pairs;
+    int pos, len; 
     PhraseNode* prevPhrase;
     PhraseNode* nextPhrase;
 
@@ -907,38 +906,18 @@ void populatePhrases(std::ifstream& pfile, int min_threshold)
     int k = 0;
 
     // First uint64_t bytes tell how many (pos,len) pairs are stored in the parse file
-    pfile.read(reinterpret_cast<char*>(&rlz_num_pairs), sizeof(uint64_t));
-    if (rlz_num_pairs >= 0 && rlz_num_pairs <= std::numeric_limits<int>::max()){
-        num_pairs = static_cast<int>(rlz_num_pairs);
-    }
-    else{
-        spdlog::error("Cannot safely covert the number of RLZ pairs: {} into an int. Please choose a better reference.", rlz_num_pairs);
-        std::exit(EXIT_FAILURE);
-    }
+    pfile.read(reinterpret_cast<char*>(&num_pairs), sizeof(uint64_t));
 
     // Update the heap with the frequencies of all pairs
     for (int i = 0; i < 2 * num_pairs; i++)
     {
         if (i % 2 == 0){
-            pfile.read(reinterpret_cast<char*>(&rlz_pos), sizeof(uint64_t));
-            if (rlz_pos >= 0 && rlz_pos <= std::numeric_limits<int>::max()){
-                pos = static_cast<int>(rlz_pos);
-            }
-            else{
-                spdlog::error("Cannot safely covert this pos: {} into an int. Please choose a smaller reference.", rlz_pos);
-                std::exit(EXIT_FAILURE);
-            }
+            pfile.read(reinterpret_cast<char*>(&pos), sizeof(int));
         }
         else
         {
-            pfile.read(reinterpret_cast<char*>(&rlz_len), sizeof(uint64_t));
-            if (rlz_len >= 0 && rlz_len <= std::numeric_limits<int>::max()){
-                len = static_cast<int>(rlz_len);
-            }
-            else{
-                spdlog::error("Cannot safely covert this len: {} into an int. Please choose a smaller reference.", rlz_len);
-                std::exit(EXIT_FAILURE);
-            }
+            pfile.read(reinterpret_cast<char*>(&len), sizeof(int));
+            
             // If the size of the phrase is less than the min threshold store as explicit else non-explicit
             if (min_threshold > -1 && len < min_threshold){
                 std::list<int> content;

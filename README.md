@@ -1,5 +1,17 @@
 # RLZ-RePair
 
+```
+                                                                                 
+ _______ _______ _______ _______ _______ _______ _______ _______ _______ _______ 
+|\     /|\     /|\     /|\     /|\     /|\     /|\     /|\     /|\     /|\     /|
+| +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ |
+| |   | | |   | | |   | | |   | | |   | | |   | | |   | | |   | | |   | | |   | |
+| |R  | | |L  | | |Z  | | |-  | | |R  | | |e  | | |P  | | |a  | | |i  | | |r  | |
+| +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ |
+|/_____\|/_____\|/_____\|/_____\|/_____\|/_____\|/_____\|/_____\|/_____\|/_____\|
+                                                                          v1.1.0
+```
+
 ## Description
 
 RLZ-RePair efficiently compresses a target sequence file using a smaller reference file by first applying RLZ compression [1], then performing RePair compression [2] on the RLZ parse. The algorithm aims to minimize the number of replacements that would occur if RePair were run directly on the sequence file by instead encoding the reference file as much as possible, since RLZ parse entries directly reference it. The software borrows some code from RePair/BigRePair [3].
@@ -171,7 +183,7 @@ usage: rlz-repair [-h] [-r REF_FILE] [-s SEQ_FILE] [-m MIN] [-i ITER] [-t THREAD
 | |_) | |     / /_____| |_) / _ \ |_) / _` | | '__|
 |  _ <| |___ / /|_____|  _ <  __/  __/ (_| | | |   
 |_| \_\_____/____|    |_| \_\___|_|   \__,_|_|_|             
-                ver 1.0.0
+                ver 1.1.0
 
 Compute the RLZ + RePair compression of a target sequence file 
 using a reference file.

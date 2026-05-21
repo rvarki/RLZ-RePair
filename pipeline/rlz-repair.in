@@ -18,7 +18,7 @@ Description = """
 | |_) | |     / /_____| |_) / _ \ |_) / _` | | '__|
 |  _ <| |___ / /|_____|  _ <  __/  __/ (_| | | |   
 |_| \_\_____/____|    |_| \_\___|_|   \__,_|_|_|             
-                ver 1.0.0
+                ver 1.1.0
 
 Compute the RLZ + RePair compression of a target sequence file 
 using a reference file.
@@ -43,7 +43,7 @@ def execute_command(args, command):
 
 def runRLZ(args):
     command = ""
-    command += rlz_exe + " " + "-r " + args.ref_file + " " + "-s " + args.seq_file + " " + "-t " + str(args.threads) + " " + "-v " + str(args.verbosity)
+    command += rlz_exe + " " + "compress" + " " + "-r " + args.ref_file + " " + "-s " + args.seq_file + " " + "-t " + str(args.threads) + " " + "-v " + str(args.verbosity) + " --repair"
     # if (args.bit):
     #     command += "--bit "
     
